@@ -8,10 +8,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "pretest": "npx playwright install chromium",
     "test": "npm run typecheck && vitest run",
     "start": "npm run typecheck && tsx src/cli.ts",
     "record": "npm run typecheck && tsx src/cli.ts record",
-    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium"
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "playwright": "^1.50.0"

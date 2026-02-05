@@ -2,7 +2,7 @@ Create a minimal step to improve the scriber, according to requirements.md. The 
 
 If all the features of the requirements are implemented say it and do not add anything. 
  
-The code should have either a test or the code that solves the test. Not both.
+The code should have either a test or the code that solves the test. Not both. If there is a test that is failing then you need to implement this test and not create a new test.
  
 ## If it is the test then: 
 1. only the test file is changed and this particular test is allowed to fail
