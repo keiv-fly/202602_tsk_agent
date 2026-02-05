@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && vitest run",
     "start": "npm run typecheck && tsx src/cli.ts",
-    "record": "npm run typecheck && tsx src/cli.ts record",
-    "replay": "npm run typecheck && tsx src/cli.ts replay"
+    "record": "npm run typecheck && tsx src/cli.ts record"
   },
   "dependencies": {
     "playwright": "^1.50.0"

@@ -14,11 +14,10 @@ cd scriber
 npm install
 ```
 
-## Run (record/replay placeholder)
+## Run (record placeholder)
 
 ```bash
 npm run record
-npm run replay
 ```
 
 Set `HEADLESS=false` to launch a visible browser window:
