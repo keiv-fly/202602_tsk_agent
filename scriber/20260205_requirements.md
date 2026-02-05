@@ -392,3 +392,39 @@ The local deterministic test site SHALL provide routes to cover required behavio
 
 * Headless execution SHALL be treated as a first-class mode for TDD and CI.
 * Any feature required by the test suite SHALL be supported in both headless and headful browser modes.
+
+### 17. Programming Language & Runtime Requirements
+
+#### 17.1 Language
+
+* The implementation SHALL be written in **TypeScript** (not plain JavaScript).
+* The repository SHALL enable **strict type-checking** (`"strict": true`) and SHALL fail builds/tests on type errors.
+
+#### 17.2 “Type-check before execution”
+
+Pick one of these enforceable interpretations (you can include both):
+
+**A) CI / dev command requirement (recommended)**
+
+* All run commands (`record`, `replay`, `test`) SHALL be preceded by a TypeScript type-check step, e.g.:
+
+  * `npm run typecheck` MUST pass before `npm run record` / `npm run replay` / `npm test` is considered successful.
+* The project SHALL provide:
+
+  * `npm run typecheck` (runs `tsc --noEmit`)
+  * `npm test` (runs tests and includes typecheck, or depends on it)
+
+#### 17.3 Node.js version & package manager
+
+* The project SHALL target **Node.js LTS** (pin a minimum version in `package.json` `engines.node`, e.g. `>=20`).
+* The project SHALL specify the package manager (npm/pnpm/yarn) and include a lockfile.
+
+#### 17.4 Tooling / linting
+
+* The project SHOULD include ESLint + Prettier (or equivalent) with a single `npm run lint`.
+* The project SHOULD use a consistent TS config (`tsconfig.json`) shared by app and tests.
+
+#### 17.5 Execution model
+
+* The project SHALL support running TypeScript sources directly in development using **`tsx`**.
+* The project SHALL provide `npm run typecheck` that runs `tsc --noEmit` and MUST pass for CI and before executing core commands.
