@@ -9,7 +9,7 @@ The tool SHALL record interactive browser sessions using standalone Playwright s
 * screenshots **before and after** actions
 * across multiple tabs / popup windows (login flows expected)
 
-The tool is intended for session recording, forensic inspection, and best-effort replay.
+The tool is intended for session recording and forensic inspection.
 
 ---
 
@@ -71,7 +71,7 @@ Each action SHALL include:
 
 ---
 
-## 4. Selector Generation (Replayability)
+## 4. Selector Generation
 
 ### 4.1 Selector candidates
 
@@ -207,33 +207,17 @@ sessions/<sessionId>/
 
 ### 11.1 Input handling
 
-* Non-password input values SHALL be stored verbatim by default for replay.
+* Non-password input values SHALL be stored verbatim by default.
 * Password fields SHALL always be masked in stored input values and DOM snapshots.
 * Passwords SHALL NOT be visible in screenshots.
 
 ### 11.2 Opt-in storage
 
 * Password values SHALL NOT be persisted in any artifacts.
-* Replay SHALL obtain password inputs at runtime via user prompt or configured secret source.
 
 ---
 
-## 12. Replay Requirements
-
-### 12.1 Replay mode
-
-* The tool SHALL support best-effort replay.
-* Replay SHALL try `primarySelector` then fallbacks.
-
-### 12.2 Failure handling
-
-* Selector failures SHALL be logged and replay continues by default.
-* Assisted replay MAY pause and request user interaction on selector failure.
-* If a password is required and no secret source is configured, replay SHALL pause for user input.
-
----
-
-## 13. Non-Goals (Baseline)
+## 12. Non-Goals (Baseline)
 
 Baseline does not require:
 
@@ -243,30 +227,29 @@ Baseline does not require:
 
 ---
 
-## 14. Success Criteria
+## 13. Success Criteria
 
 The tool is successful if it can:
 
 * record a login flow involving popups
 * produce before/after screenshot timeline per action
 * capture accurate DOM states per action
-* replay with minimal manual intervention
 
 ---
 
-# 15. Test-Driven Development Requirements
+# 14. Test-Driven Development Requirements
 
-## 15.1 Test environment (deterministic by default)
+## 14.1 Test environment (deterministic by default)
 
 * The project SHALL include a **local deterministic test site** served from localhost for automated tests.
 * The automated test suite SHALL NOT depend on external network availability or third-party site stability.
 * Real-site tests (if present) SHALL be limited to a small smoke suite and SHALL be non-blocking (e.g., nightly or manual).
 
-## 15.2 Test pyramid
+## 14.2 Test pyramid
 
 The test suite SHALL include:
 
-### 15.2.1 Unit tests (no browser)
+### 14.2.1 Unit tests (no browser)
 
 Unit tests SHALL validate:
 
@@ -294,7 +277,7 @@ Unit tests SHALL validate:
 
    * input events coalesce according to configured inactivity window
 
-### 15.2.2 Local browser integration tests (Playwright + local test site)
+### 14.2.2 Local browser integration tests (Playwright + local test site)
 
 Integration tests SHALL execute Playwright against the local test site and validate end-to-end artifact production.
 
@@ -346,14 +329,14 @@ H) **Crash-safety of actions.jsonl**
 * Simulate abrupt termination after writing multiple actions (or kill child process in test harness)
 * Assert: `actions.jsonl` remains readable up to last complete line and tool-defined behavior for incomplete line is honored.
 
-## 15.3 Real-site smoke tests (optional, non-blocking)
+## 14.3 Real-site smoke tests (optional, non-blocking)
 
 If implemented:
 
 * Smoke tests SHALL verify only coarse outcomes (e.g., “a navigation action was logged and a screenshot was created”).
 * Smoke tests SHALL avoid brittle selectors and SHALL not be required for PR merge.
 
-## 15.4 Test site routes (minimum set)
+## 14.4 Test site routes (minimum set)
 
 The local deterministic test site SHALL provide routes to cover required behaviors:
 
@@ -364,9 +347,9 @@ The local deterministic test site SHALL provide routes to cover required behavio
 * `/popup-a`, `/popup-b` (popup login flow)
 
 
-## 16. Headless Environment & Screenshot Testing Requirements
+## 15. Headless Environment & Screenshot Testing Requirements
 
-### 16.1 Headless compatibility
+### 15.1 Headless compatibility
 
 * The tool SHALL support full operation in **headless browser environments** for automated tests (e.g., CI systems, containerized runners, Codex Web).
 * In headless mode, the tool SHALL be able to:
@@ -376,12 +359,12 @@ The local deterministic test site SHALL provide routes to cover required behavio
   * capture computed DOM snapshots
   * write all artifacts to disk
 
-### 16.2 Screenshot guarantees
+### 15.2 Screenshot guarantees
 
 * Screenshots captured in headless environments SHALL represent the browser’s rendered output (offscreen rendering).
 * The tool SHALL NOT require a physical display or GPU acceleration to produce screenshots.
 
-### 16.3 Testing assertions for screenshots
+### 15.3 Testing assertions for screenshots
 
 * Automated tests SHALL NOT rely on pixel-level comparison of screenshots.
 * Screenshot-related assertions SHALL be limited to:
@@ -391,24 +374,24 @@ The local deterministic test site SHALL provide routes to cover required behavio
   * correct association with `actionId`, `pageId`, and snapshot phase (`before` / `after`)
 * Visual correctness SHALL be validated indirectly via DOM state assertions, not image equality.
 
-### 16.4 Determinism considerations
+### 15.4 Determinism considerations
 
 * Tests SHALL explicitly set viewport size to ensure consistent screenshot dimensions.
 * Test pages MAY disable animations and transitions to reduce rendering variability across environments.
 
-### 16.5 Parity with headful execution
+### 15.5 Parity with headful execution
 
 * Headless execution SHALL be treated as a first-class mode for TDD and CI.
 * Any feature required by the test suite SHALL be supported in both headless and headful browser modes.
 
-### 17. Programming Language & Runtime Requirements
+### 16. Programming Language & Runtime Requirements
 
-#### 17.1 Language
+#### 16.1 Language
 
 * The implementation SHALL be written in **TypeScript** (not plain JavaScript).
 * The repository SHALL enable **strict type-checking** (`"strict": true`) and SHALL fail builds/tests on type errors.
 
-#### 17.2 “Type-check before execution”
+#### 16.2 “Type-check before execution”
 
 Pick one of these enforceable interpretations (you can include both):
 
@@ -422,17 +405,17 @@ Pick one of these enforceable interpretations (you can include both):
   * `npm run typecheck` (runs `tsc --noEmit`)
   * `npm test` (runs tests and includes typecheck, or depends on it)
 
-#### 17.3 Node.js version & package manager
+#### 16.3 Node.js version & package manager
 
 * The project SHALL target **Node.js LTS** (pin a minimum version in `package.json` `engines.node`, e.g. `>=20`).
 * The project SHALL specify the package manager (npm/pnpm/yarn) and include a lockfile.
 
-#### 17.4 Tooling / linting
+#### 16.4 Tooling / linting
 
 * The project SHOULD include ESLint + Prettier (or equivalent) with a single `npm run lint`.
 * The project SHOULD use a consistent TS config (`tsconfig.json`) shared by app and tests.
 
-#### 17.5 Execution model
+#### 16.5 Execution model
 
 * The project SHALL support running TypeScript sources directly in development using **`tsx`**.
 * The project SHALL provide `npm run typecheck` that runs `tsc --noEmit` and MUST pass for CI and before executing core commands.
