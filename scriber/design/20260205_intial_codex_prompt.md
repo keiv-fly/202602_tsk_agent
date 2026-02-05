@@ -1,0 +1,1 @@
+For the scriber. Create an environment according to requirements.md and make the first test that checks that the tool starts in the environment.
