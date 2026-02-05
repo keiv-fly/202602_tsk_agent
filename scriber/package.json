@@ -8,11 +8,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "pretest": "npx playwright install chromium",
+    "pretest": "npx playwright install --with-deps",
     "test": "npm run typecheck && vitest run",
     "start": "npm run typecheck && tsx src/cli.ts",
     "record": "npm run typecheck && tsx src/cli.ts record",
-    "postinstall": "npx playwright install chromium"
+    "postinstall": "npx playwright install --with-deps"
   },
   "dependencies": {
     "playwright": "^1.50.0"
