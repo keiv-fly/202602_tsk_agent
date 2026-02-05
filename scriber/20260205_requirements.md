@@ -18,7 +18,8 @@ The tool is intended for session recording, forensic inspection, and best-effort
 ### 2.1 Session start
 
 * The tool SHALL allow the user to input a start URL (CLI prompt or local UI).
-* The tool SHALL launch a visible browser (`headless: false`) using Playwright.
+* The tool SHALL launch a visible browser (`headless: false`) for interactive user sessions.
+* The tool SHALL support running in headless mode for automated tests and CI.
 * Each session SHALL receive a unique `sessionId`.
 
 ### 2.2 Session end
@@ -63,8 +64,9 @@ Each action SHALL include:
 
 ### 3.3 Append-only logging
 
-* Actions SHALL be written incrementally to `actions.jsonl`.
-* The log SHALL remain valid even if the session terminates unexpectedly.
+* Actions SHALL be written incrementally to `actions.jsonl`, one JSON object per line terminated by `\n`.
+* On abrupt termination, the file MAY end with a partial trailing line.
+* Readers SHALL ignore a final line if it is not valid JSON (optional truncation allowed).
 * An optional consolidated `actions.json` MAY be produced at session end.
 
 ---
@@ -105,9 +107,13 @@ Each action SHALL store:
 
 Snapshots SHALL be taken for:
 
-* `click`, `submit`, `navigate`, `popup_open`, `tab_switch`
+* `click`, `submit`, `navigate`, `popup_open`, `tab_switch`, `input`, `change`
 
-Input actions SHALL be debounced, with snapshots taken after a period of inactivity.
+Input actions SHALL be debounced and paired:
+
+* a single `before` snapshot at the first input event in a burst
+* a single `after` snapshot after the inactivity window elapses, or on blur/submit
+* intermediate keystrokes within the debounce window SHALL NOT trigger snapshots
 
 ---
 
@@ -201,13 +207,14 @@ sessions/<sessionId>/
 
 ### 11.1 Input handling
 
-* Password fields SHALL always be masked.
-* By default, non-password input values SHALL NOT be stored verbatim; store length + field metadata only.
+* Non-password input values SHALL be stored verbatim by default for replay.
+* Password fields SHALL always be masked in stored input values and DOM snapshots.
+* Passwords SHALL NOT be visible in screenshots.
 
 ### 11.2 Opt-in storage
 
-* Storing raw input values SHALL require explicit configuration.
-* Regex-based redaction rules SHALL be supported.
+* Password values SHALL NOT be persisted in any artifacts.
+* Replay SHALL obtain password inputs at runtime via user prompt or configured secret source.
 
 ---
 
@@ -222,6 +229,7 @@ sessions/<sessionId>/
 
 * Selector failures SHALL be logged and replay continues by default.
 * Assisted replay MAY pause and request user interaction on selector failure.
+* If a password is required and no secret source is configured, replay SHALL pause for user input.
 
 ---
 
@@ -265,7 +273,7 @@ Unit tests SHALL validate:
 1. **JSONL writer**
 
    * appends valid JSON objects line-by-line
-   * remains parseable after abrupt termination (partial line handling defined)
+   * ignores a trailing partial line after abrupt termination
 2. **Schema validation**
 
    * required fields exist (`actionId`, `stepNumber`, `pageId`, `url`, timestamps)
@@ -360,7 +368,7 @@ The local deterministic test site SHALL provide routes to cover required behavio
 
 ### 16.1 Headless compatibility
 
-* The tool SHALL support full operation in **headless browser environments** (e.g., CI systems, containerized runners, Codex Web).
+* The tool SHALL support full operation in **headless browser environments** for automated tests (e.g., CI systems, containerized runners, Codex Web).
 * In headless mode, the tool SHALL be able to:
 
   * record user actions
