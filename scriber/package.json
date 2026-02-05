@@ -1,0 +1,25 @@
+{
+  "name": "scriber",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && vitest run",
+    "start": "npm run typecheck && tsx src/cli.ts",
+    "record": "npm run typecheck && tsx src/cli.ts record",
+    "replay": "npm run typecheck && tsx src/cli.ts replay"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
