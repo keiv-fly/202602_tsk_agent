@@ -1,1 +1,3 @@
 Create a minimal step to improve the scriber, according to requirements.md. The improvement can either be a new test or an implementation that solves this test. This is a TDD, so tests come first. The test should have a text description that tells what it is doing.
+
+If all the features of the requirements are implemented say it and do not add anything.
