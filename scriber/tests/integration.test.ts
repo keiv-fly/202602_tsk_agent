@@ -1,0 +1,221 @@
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+
+import { startTool } from "../src/tool.js";
+import { gunzipHtml } from "../src/tooling/dom.js";
+import { parseJsonl } from "../src/tooling/jsonl.js";
+import { snapshotPath } from "../src/tooling/paths.js";
+import { startTestServer, TestServer } from "./support/testSite.js";
+
+const waitForArtifacts = async (page: { waitForTimeout: (ms: number) => Promise<void> }) => {
+  await page.waitForTimeout(1200);
+};
+
+describe("scriber integration", () => {
+  let server: TestServer;
+
+  beforeAll(async () => {
+    server = await startTestServer();
+  });
+
+  afterAll(async () => {
+    await server.close();
+  });
+
+  it("produces session artifacts and linkage for a click", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.click("#toggle-btn");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const files = await readdir(outputDir);
+    expect(files).toContain("meta.json");
+    expect(files).toContain("actions.jsonl");
+    expect(files).toContain("screenshots");
+    expect(files).toContain("dom");
+  });
+
+  it("captures before/after DOM snapshots around clicks", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.click("#toggle-btn");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string; actionId: string; stepNumber: number }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+    const clickAction = actions.find((action) => action.actionType === "click");
+    expect(clickAction).toBeTruthy();
+    if (!clickAction) {
+      return;
+    }
+
+    const beforeDomPath = snapshotPath(
+      outputDir,
+      "dom",
+      clickAction.stepNumber,
+      clickAction.actionId,
+      "before",
+      "html.gz"
+    );
+    const afterDomPath = snapshotPath(
+      outputDir,
+      "dom",
+      clickAction.stepNumber,
+      clickAction.actionId,
+      "after",
+      "html.gz"
+    );
+    const beforeHtml = await gunzipHtml(await readFile(beforeDomPath));
+    const afterHtml = await gunzipHtml(await readFile(afterDomPath));
+
+    expect(beforeHtml).toContain("Off");
+    expect(afterHtml).toContain("On");
+  });
+
+  it("waits for settled DOM mutations before after snapshots", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/delayed-mutations`,
+      outputDir
+    });
+
+    await result.page.click("#mutate-btn");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string; actionId: string; stepNumber: number }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+    const clickAction = actions.find((action) => action.actionType === "click");
+    expect(clickAction).toBeTruthy();
+    if (!clickAction) {
+      return;
+    }
+
+    const afterDomPath = snapshotPath(
+      outputDir,
+      "dom",
+      clickAction.stepNumber,
+      clickAction.actionId,
+      "after",
+      "html.gz"
+    );
+    const afterHtml = await gunzipHtml(await readFile(afterDomPath));
+    expect(afterHtml).toContain("Done");
+  });
+
+  it("debounces input snapshots", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/inputs`,
+      outputDir
+    });
+
+    await result.page.type("#text-input", "hello");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+    const inputActions = actions.filter((action) => action.actionType === "input");
+    expect(inputActions).toHaveLength(1);
+  });
+
+  it("records popup flows and tab switches", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/popup-a`,
+      outputDir
+    });
+
+    const context = result.page.context();
+    const popupPromise = context.waitForEvent("page");
+    await result.page.click("#popup-btn");
+    const popup = await popupPromise;
+    await popup.waitForLoadState();
+    await popup.bringToFront();
+    await popup.click("#approve-btn");
+    await result.page.bringToFront();
+    await popup.close();
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string; pageId: string }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+    const popupAction = actions.find((action) => action.actionType === "popup_open");
+    const tabSwitch = actions.find((action) => action.actionType === "tab_switch");
+    expect(popupAction).toBeTruthy();
+    expect(tabSwitch).toBeTruthy();
+    if (popupAction && tabSwitch) {
+      expect(popupAction.pageId).not.toBe(tabSwitch.pageId);
+    }
+  });
+
+  it("generates selector candidates in priority order", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/selectors`,
+      outputDir
+    });
+
+    await result.page.click("[data-testid='primary']");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string; primarySelector: string | null }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+    const clickAction = actions.find((action) => action.actionType === "click");
+    expect(clickAction?.primarySelector).toBe('[data-testid="primary"]');
+  });
+
+  it("redacts password values while preserving non-password inputs", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/inputs`,
+      outputDir
+    });
+
+    await result.page.fill("#text-input", "Alice");
+    await result.page.fill("#password-input", "secret");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{
+      actionType: string;
+      target?: { type?: string; value?: string };
+    }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
+
+    const textAction = actions.find(
+      (action) => action.actionType === "input" && action.target?.type === "text"
+    );
+    const passwordAction = actions.find(
+      (action) => action.actionType === "input" && action.target?.type === "password"
+    );
+
+    expect(textAction?.target?.value).toBe("Alice");
+    expect(passwordAction?.target?.value).toBe("********");
+  });
+});

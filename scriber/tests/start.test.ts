@@ -25,6 +25,7 @@ describe("scriber startup", () => {
     const result = await startTool({ headless: true });
 
     expect(result.browserVersion).toBeTruthy();
+    await result.stop();
   });
 });
 
@@ -53,6 +54,7 @@ describe("scriber session metadata", () => {
     const sessionId = (result as { sessionId?: string }).sessionId;
 
     expect(sessionId).toBeTruthy();
+    await result.stop();
   });
 });
 
@@ -81,5 +83,6 @@ describe("scriber session metadata details", () => {
     const userAgent = (result as { userAgent?: string }).userAgent;
 
     expect(userAgent).toBeTruthy();
+    await result.stop();
   });
 });
