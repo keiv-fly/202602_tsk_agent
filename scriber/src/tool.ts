@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
 
 export interface StartOptions {
@@ -6,6 +7,7 @@ export interface StartOptions {
 
 export interface StartResult {
   browserVersion: string;
+  sessionId: string;
 }
 
 export const startTool = async (
@@ -16,6 +18,7 @@ export const startTool = async (
   });
 
   try {
+    const sessionId = randomUUID();
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 }
     });
@@ -23,7 +26,7 @@ export const startTool = async (
     await page.goto("about:blank");
     await context.close();
 
-    return { browserVersion: browser.version() };
+    return { browserVersion: browser.version(), sessionId };
   } finally {
     await browser.close();
   }
