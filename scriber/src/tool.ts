@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
@@ -50,10 +49,47 @@ const normalizeStartUrl = (value?: string): string => {
   return `https://${trimmed}`;
 };
 
+const padTwo = (value: number) => value.toString().padStart(2, "0");
+
+const formatSessionTimestamp = (date: Date) => {
+  return [
+    date.getFullYear(),
+    padTwo(date.getMonth() + 1),
+    padTwo(date.getDate())
+  ].join("") + `_${padTwo(date.getHours())}${padTwo(date.getMinutes())}`;
+};
+
+const sanitizeSessionDomain = (value: string) => {
+  const sanitized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return sanitized || "unknown";
+};
+
+const deriveSessionDomain = (startUrl: string) => {
+  try {
+    const url = new URL(startUrl);
+    if (url.hostname) {
+      return sanitizeSessionDomain(url.hostname);
+    }
+  } catch {
+    // Fall back to a generic identifier for non-URL inputs.
+  }
+  return "unknown";
+};
+
+const buildSessionId = (startUrl: string, startedAt: Date) => {
+  return `${formatSessionTimestamp(startedAt)}_${deriveSessionDomain(startUrl)}`;
+};
+
 export const startTool = async (
   options: StartOptions = {}
 ): Promise<StartResult> => {
-  const sessionId = randomUUID();
+  const startUrl = normalizeStartUrl(options.startUrl);
+  const startedAt = new Date();
+  const sessionId = buildSessionId(startUrl, startedAt);
   const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
   await mkdir(outputDir, { recursive: true });
   await mkdir(resolve(outputDir, "screenshots"), { recursive: true });
@@ -79,7 +115,6 @@ export const startTool = async (
 
   await recorder.attach(context);
 
-  const startUrl = normalizeStartUrl(options.startUrl);
   await page.goto(startUrl);
 
   const userAgent = await page.evaluate(() => navigator.userAgent);
@@ -87,7 +122,7 @@ export const startTool = async (
     () => Intl.DateTimeFormat().resolvedOptions().timeZone
   );
 
-  const startTimestamp = new Date().toISOString();
+  const startTimestamp = startedAt.toISOString();
   const meta: SessionMeta = {
     sessionId,
     startTimestamp,
