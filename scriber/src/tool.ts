@@ -8,6 +8,7 @@ export interface StartOptions {
 export interface StartResult {
   browserVersion: string;
   sessionId: string;
+  userAgent: string;
 }
 
 export const startTool = async (
@@ -24,9 +25,10 @@ export const startTool = async (
     });
     const page = await context.newPage();
     await page.goto("about:blank");
+    const userAgent = await page.evaluate(() => navigator.userAgent);
     await context.close();
 
-    return { browserVersion: browser.version(), sessionId };
+    return { browserVersion: browser.version(), sessionId, userAgent };
   } finally {
     await browser.close();
   }
