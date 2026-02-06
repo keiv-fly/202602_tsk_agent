@@ -25,6 +25,31 @@ export interface StartResult extends RecorderSession {
   timezone: string;
 }
 
+const normalizeStartUrl = (value?: string): string => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "about:blank";
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^(about|file|data|chrome|edge|blob):/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (
+    /^localhost(?::\d+)?(?:\/|$)/i.test(trimmed) ||
+    /^127(?:\.\d{1,3}){3}(?::\d+)?(?:\/|$)/.test(trimmed) ||
+    /^0\.0\.0\.0(?::\d+)?(?:\/|$)/.test(trimmed)
+  ) {
+    return `http://${trimmed}`;
+  }
+
+  return `https://${trimmed}`;
+};
+
 export const startTool = async (
   options: StartOptions = {}
 ): Promise<StartResult> => {
@@ -54,7 +79,7 @@ export const startTool = async (
 
   await recorder.attach(context);
 
-  const startUrl = options.startUrl ?? "about:blank";
+  const startUrl = normalizeStartUrl(options.startUrl);
   await page.goto(startUrl);
 
   const userAgent = await page.evaluate(() => navigator.userAgent);
