@@ -16,7 +16,7 @@ const promptForUrl = async () => {
 
 const main = async () => {
   const command = process.argv[2] ?? "record";
-  const headless = process.env.HEADLESS !== "false";
+  const headless = process.env.HEADLESS === "true";
   const startUrl =
     process.env.START_URL ??
     process.argv[3] ??

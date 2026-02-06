@@ -14,16 +14,17 @@ cd scriber
 npm install
 ```
 
-## Run (record placeholder)
+## Run (record)
 
 ```bash
 npm run record
 ```
 
-Set `HEADLESS=false` to launch a visible browser window:
+`npm run record` launches a visible browser window by default. Use `HEADLESS=true`
+to run the recorder without a UI:
 
 ```bash
-HEADLESS=false npm run record
+HEADLESS=true npm run record
 ```
 
 ## Tests
