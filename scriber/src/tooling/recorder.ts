@@ -60,6 +60,9 @@ export class ScriberRecorder {
   private pageIds = new Map<Page, string>();
   private primaryPage: Page | null = null;
   private lastPageUrlById = new Map<string, string>();
+  private latestScreenshotByPageId = new Map<string, Uint8Array>();
+  private previewCaptureIntervals = new Map<string, ReturnType<typeof setInterval>>();
+  private previewCaptureInFlight = new Set<string>();
   private stepNumber = 0;
   private actions: RecordedAction[] = [];
   private inputDebouncer: InputDebouncer<PendingInput>;
@@ -171,6 +174,7 @@ export class ScriberRecorder {
 
     page.on("close", () => {
       this.pageIds.delete(page);
+      this.stopPreviewCapture(pageId);
     });
 
     const opener = await page.opener();
@@ -214,10 +218,12 @@ export class ScriberRecorder {
     });
 
     this.lastPageUrlById.set(pageId, page.url());
+    this.startPreviewCapture(page, pageId);
   }
 
   async stop({ endTimestamp }: { endTimestamp: string }) {
     this.closing = true;
+    this.stopAllPreviewCaptures();
     if (this.inputDebouncer.hasPending) {
       await this.inputDebouncer.flush();
     }
@@ -456,12 +462,17 @@ export class ScriberRecorder {
       "html.gz"
     );
 
-    await this.maskPasswordsForScreenshot(page, async () => {
-      await page.screenshot({
-        path: screenshotPath,
-        fullPage: this.options.fullPageScreenshots
-      });
-    });
+    const cachedScreenshot =
+      descriptor.phase === "before"
+        ? this.latestScreenshotByPageId.get(descriptor.pageId)
+        : undefined;
+    if (cachedScreenshot) {
+      await writeFile(screenshotPath, cachedScreenshot);
+    } else {
+      const screenshot = await this.captureScreenshotBuffer(page);
+      await writeFile(screenshotPath, screenshot);
+      this.latestScreenshotByPageId.set(descriptor.pageId, screenshot);
+    }
 
     const html = await page.evaluate(() => {
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
@@ -480,6 +491,58 @@ export class ScriberRecorder {
 
     const gzipBuffer = await gzipHtml(html);
     await writeFile(domPath, gzipBuffer);
+  }
+
+  private startPreviewCapture(page: Page, pageId: string) {
+    this.track(this.refreshLatestScreenshot(page, pageId));
+    const interval = setInterval(() => {
+      this.track(this.refreshLatestScreenshot(page, pageId));
+    }, 500);
+    this.previewCaptureIntervals.set(pageId, interval);
+  }
+
+  private stopPreviewCapture(pageId: string) {
+    const interval = this.previewCaptureIntervals.get(pageId);
+    if (interval) {
+      clearInterval(interval);
+      this.previewCaptureIntervals.delete(pageId);
+    }
+    this.previewCaptureInFlight.delete(pageId);
+    this.latestScreenshotByPageId.delete(pageId);
+  }
+
+  private stopAllPreviewCaptures() {
+    for (const [pageId, interval] of this.previewCaptureIntervals.entries()) {
+      clearInterval(interval);
+      this.previewCaptureIntervals.delete(pageId);
+    }
+    this.previewCaptureInFlight.clear();
+    this.latestScreenshotByPageId.clear();
+  }
+
+  private async refreshLatestScreenshot(page: Page, pageId: string) {
+    if (this.closing || this.previewCaptureInFlight.has(pageId)) {
+      return;
+    }
+    this.previewCaptureInFlight.add(pageId);
+    try {
+      const screenshot = await this.captureScreenshotBuffer(page);
+      this.latestScreenshotByPageId.set(pageId, screenshot);
+    } catch {
+      // Ignore preview capture errors (e.g., page navigating/closing).
+    } finally {
+      this.previewCaptureInFlight.delete(pageId);
+    }
+  }
+
+  private async captureScreenshotBuffer(page: Page): Promise<Uint8Array> {
+    let screenshot: Uint8Array | null = null;
+    await this.maskPasswordsForScreenshot(page, async () => {
+      screenshot = await page.screenshot({
+        fullPage: this.options.fullPageScreenshots
+      });
+    });
+    return screenshot ?? new Uint8Array();
   }
 
   private getScreenshotFileName(
