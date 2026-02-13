@@ -12,7 +12,7 @@ const { version: playwrightVersion } = require("playwright/package.json") as {
 import { InputDebouncer } from "./debounce.js";
 import { gzipHtml } from "./dom.js";
 import { appendJsonl } from "./jsonl.js";
-import { snapshotPath } from "./paths.js";
+import { snapshotFilename, snapshotPath } from "./paths.js";
 import { RedactionRule, redactValue } from "./redaction.js";
 import {
   ActionRecord,
@@ -91,6 +91,12 @@ export class ScriberRecorder {
           actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
+          beforeScreenshotFileName: this.getScreenshotFileName(
+            pending.stepNumber,
+            pending.actionId,
+            "before"
+          ),
+          afterScreenshotFileName: null,
           target: pending.target,
           primarySelector: pending.selectors.primarySelector,
           fallbackSelectors: pending.selectors.fallbackSelectors,
@@ -328,6 +334,8 @@ export class ScriberRecorder {
       actionType: payload.actionType,
       url: payload.url,
       pageId,
+      beforeScreenshotFileName: null,
+      afterScreenshotFileName: null,
       target: payload.target,
       primarySelector: payload.selectors.primarySelector,
       fallbackSelectors: payload.selectors.fallbackSelectors,
@@ -335,6 +343,16 @@ export class ScriberRecorder {
     };
 
     if (payload.actionType === "click") {
+      action.beforeScreenshotFileName = this.getScreenshotFileName(
+        stepNumber,
+        actionId,
+        "before"
+      );
+      action.afterScreenshotFileName = this.getScreenshotFileName(
+        stepNumber,
+        actionId,
+        "after"
+      );
       await this.safeCaptureSnapshot(page, {
         actionId,
         stepNumber,
@@ -462,6 +480,14 @@ export class ScriberRecorder {
 
     const gzipBuffer = await gzipHtml(html);
     await writeFile(domPath, gzipBuffer);
+  }
+
+  private getScreenshotFileName(
+    stepNumber: number,
+    actionId: string,
+    phase: "before" | "after"
+  ) {
+    return snapshotFilename(stepNumber, actionId, phase, "png");
   }
 
   private async maskPasswordsForScreenshot(

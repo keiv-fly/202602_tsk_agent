@@ -12,6 +12,8 @@ describe("action schema validation", () => {
         actionType: "click",
         url: "http://example.com",
         pageId: "p1",
+        beforeScreenshotFileName: "000001_a1_before.png",
+        afterScreenshotFileName: "000001_a1_after.png",
         primarySelector: "#id",
         fallbackSelectors: []
       },
@@ -22,6 +24,8 @@ describe("action schema validation", () => {
         actionType: "click",
         url: "http://example.com",
         pageId: "p1",
+        beforeScreenshotFileName: "000002_a2_before.png",
+        afterScreenshotFileName: "000002_a2_after.png",
         primarySelector: "#id",
         fallbackSelectors: []
       }

@@ -65,6 +65,8 @@ export interface ActionRecord extends SelectorInfo {
   actionType: ActionType;
   url: string;
   pageId: string;
+  beforeScreenshotFileName: string | null;
+  afterScreenshotFileName: string | null;
   target?: TargetMetadata;
   details?: Record<string, unknown>;
 }
