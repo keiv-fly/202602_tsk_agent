@@ -32,16 +32,36 @@ const main = async () => {
   );
   console.log("Press Ctrl+C to stop recording.");
 
-  const stop = async () => {
-    await result.stop();
-    process.exit(0);
+  let shutdownPromise: Promise<void> | null = null;
+  const stopAndExit = (signal: NodeJS.Signals) => {
+    if (shutdownPromise) {
+      return shutdownPromise;
+    }
+    shutdownPromise = (async () => {
+      process.stdout.write(`\nReceived ${signal}. Saving session...\n`);
+      try {
+        await result.stop();
+        process.stdout.write("Session saved. Exiting.\n");
+        process.stdin.pause();
+        process.exit(0);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : String(error);
+        process.stderr.write(`Failed to stop cleanly: ${message}\n`);
+        process.stdin.pause();
+        process.exit(1);
+      }
+    })();
+    return shutdownPromise;
   };
 
-  process.on("SIGINT", () => {
-    void stop();
+  process.once("SIGINT", () => {
+    void stopAndExit("SIGINT");
   });
-  process.on("SIGTERM", () => {
-    void stop();
+  process.once("SIGTERM", () => {
+    void stopAndExit("SIGTERM");
   });
 };
 
