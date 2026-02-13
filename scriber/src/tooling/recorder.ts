@@ -46,6 +46,7 @@ interface PendingInput {
   timestamp: string;
   target?: TargetMetadata;
   selectors: { primarySelector: string | null; fallbackSelectors: string[] };
+  details?: Record<string, unknown>;
 }
 
 interface RecordedAction {
@@ -58,6 +59,7 @@ export class ScriberRecorder {
   private context: BrowserContext | null = null;
   private pageIds = new Map<Page, string>();
   private primaryPage: Page | null = null;
+  private lastPageUrlById = new Map<string, string>();
   private stepNumber = 0;
   private actions: RecordedAction[] = [];
   private inputDebouncer: InputDebouncer<PendingInput>;
@@ -86,23 +88,14 @@ export class ScriberRecorder {
           actionId: pending.actionId,
           stepNumber: pending.stepNumber,
           timestamp: pending.timestamp,
-          actionType: "input",
+          actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
           target: pending.target,
           primarySelector: pending.selectors.primarySelector,
-          fallbackSelectors: pending.selectors.fallbackSelectors
+          fallbackSelectors: pending.selectors.fallbackSelectors,
+          details: pending.details
         });
-        await this.waitForDomQuiet(pending.pageId);
-        const page = this.getPageById(pending.pageId);
-        if (page) {
-          await this.safeCaptureSnapshot(page, {
-            actionId: pending.actionId,
-            stepNumber: pending.stepNumber,
-            pageId: pending.pageId,
-            phase: "after"
-          });
-        }
       }
     });
   }
@@ -134,6 +127,14 @@ export class ScriberRecorder {
     this.pageIds.set(page, pageId);
     if (!this.primaryPage) {
       this.primaryPage = page;
+      this.track(
+        this.recordAction(page, {
+          actionType: "goto",
+          url: page.url(),
+          target: undefined,
+          selectors: { primarySelector: null, fallbackSelectors: [] }
+        })
+      );
     }
 
     await page.exposeBinding(
@@ -145,9 +146,15 @@ export class ScriberRecorder {
 
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame()) {
+        const pageId = this.getPageId(page);
+        const previousUrl = this.lastPageUrlById.get(pageId);
+        this.lastPageUrlById.set(pageId, frame.url());
+        if (!previousUrl || previousUrl === frame.url()) {
+          return;
+        }
         this.track(
           this.recordAction(page, {
-            actionType: "navigate",
+            actionType: "navigation",
             url: frame.url(),
             target: undefined,
             selectors: { primarySelector: null, fallbackSelectors: [] }
@@ -165,22 +172,42 @@ export class ScriberRecorder {
     if (isPopup) {
       this.track(
         this.recordAction(page, {
-          actionType: "popup_open",
+          actionType: "popup",
           url: page.url(),
           target: undefined,
-          selectors: { primarySelector: null, fallbackSelectors: [] }
+          selectors: { primarySelector: null, fallbackSelectors: [] },
+          details: { popupId: pageId, openerPageId: opener ? this.getPageId(opener) : null }
         })
       );
       const tabSwitchPage = opener ?? this.primaryPage ?? page;
       this.track(
         this.recordAction(tabSwitchPage, {
-          actionType: "tab_switch",
+          actionType: "switch_page",
           url: tabSwitchPage.url(),
           target: undefined,
-          selectors: { primarySelector: null, fallbackSelectors: [] }
+          selectors: { primarySelector: null, fallbackSelectors: [] },
+          details: { pageId: this.getPageId(page) }
         })
       );
     }
+
+    page.on("dialog", (dialog) => {
+      this.track(
+        this.recordAction(page, {
+          actionType: "dialog",
+          url: page.url(),
+          target: undefined,
+          selectors: { primarySelector: null, fallbackSelectors: [] },
+          details: {
+            dialogType: dialog.type(),
+            message: dialog.message(),
+            defaultValue: dialog.defaultValue()
+          }
+        })
+      );
+    });
+
+    this.lastPageUrlById.set(pageId, page.url());
   }
 
   async stop({ endTimestamp }: { endTimestamp: string }) {
@@ -217,6 +244,7 @@ export class ScriberRecorder {
     };
     const target = payload.target;
     const actionType = payload.actionType;
+    const details = payload.details;
 
     if (target?.value) {
       target.value = redactValue(
@@ -226,8 +254,8 @@ export class ScriberRecorder {
       );
     }
 
-    if (actionType === "input") {
-      this.track(this.handleInput(page, url, target, selectors));
+    if (actionType === "fill") {
+      this.track(this.handleInput(page, url, target, selectors, details));
       return;
     }
 
@@ -236,7 +264,8 @@ export class ScriberRecorder {
         actionType,
         url,
         target,
-        selectors
+        selectors,
+        details: payload.details
       })
     );
   }
@@ -245,12 +274,21 @@ export class ScriberRecorder {
     page: Page,
     url: string,
     target: TargetMetadata | undefined,
-    selectors: { primarySelector: string | null; fallbackSelectors: string[] }
+    selectors: { primarySelector: string | null; fallbackSelectors: string[] },
+    details?: Record<string, unknown>
   ) {
     const existing = this.inputDebouncer.getPending();
-    const actionId = existing?.actionId ?? randomUUID();
-    const stepNumber = existing?.stepNumber ?? this.nextStepNumber();
-    const timestamp = existing?.timestamp ?? new Date().toISOString();
+    if (
+      existing &&
+      (existing.pageId !== this.getPageId(page) ||
+        existing.selectors.primarySelector !== selectors.primarySelector)
+    ) {
+      await this.inputDebouncer.flush();
+    }
+    const refreshed = this.inputDebouncer.getPending();
+    const actionId = refreshed?.actionId ?? randomUUID();
+    const stepNumber = refreshed?.stepNumber ?? this.nextStepNumber();
+    const timestamp = refreshed?.timestamp ?? new Date().toISOString();
     const pending: PendingInput = {
       actionId,
       stepNumber,
@@ -258,7 +296,8 @@ export class ScriberRecorder {
       url,
       timestamp,
       target,
-      selectors
+      selectors,
+      details
     };
 
     await this.inputDebouncer.push(pending);
@@ -271,6 +310,7 @@ export class ScriberRecorder {
       url: string;
       target: TargetMetadata | undefined;
       selectors: { primarySelector: string | null; fallbackSelectors: string[] };
+      details?: Record<string, unknown>;
     }
   ) {
     if (this.inputDebouncer.hasPending) {
@@ -290,25 +330,29 @@ export class ScriberRecorder {
       pageId,
       target: payload.target,
       primarySelector: payload.selectors.primarySelector,
-      fallbackSelectors: payload.selectors.fallbackSelectors
+      fallbackSelectors: payload.selectors.fallbackSelectors,
+      details: payload.details
     };
 
-    await this.safeCaptureSnapshot(page, {
-      actionId,
-      stepNumber,
-      pageId,
-      phase: "before"
-    });
+    if (payload.actionType === "click") {
+      await this.safeCaptureSnapshot(page, {
+        actionId,
+        stepNumber,
+        pageId,
+        phase: "before"
+      });
+    }
 
     await this.writeAction(action);
-    await this.waitForDomQuiet(pageId);
-
-    await this.safeCaptureSnapshot(page, {
-      actionId,
-      stepNumber,
-      pageId,
-      phase: "after"
-    });
+    if (payload.actionType === "click") {
+      await this.waitForDomQuiet(pageId);
+      await this.safeCaptureSnapshot(page, {
+        actionId,
+        stepNumber,
+        pageId,
+        phase: "after"
+      });
+    }
   }
 
   private async safeCaptureSnapshot(
@@ -486,6 +530,7 @@ interface RecorderPayload {
   url?: string;
   selectors?: { primarySelector: string | null; fallbackSelectors: string[] };
   target?: TargetMetadata;
+  details?: Record<string, unknown>;
 }
 
 const createInitScript = () => `
@@ -586,24 +631,161 @@ const createInitScript = () => `
     }
   };
 
-  const actionHandler = (event, actionType) => {
+  const actionHandler = (event, actionType, details) => {
     const target = event.target;
     const selectors = buildSelectors(target);
     emit({
       actionType,
       url: window.location.href,
       selectors,
-      target: buildTarget(target)
+      target: buildTarget(target),
+      details
     });
   };
 
-  document.addEventListener('click', (event) => actionHandler(event, 'click'), true);
-  document.addEventListener('input', (event) => actionHandler(event, 'input'), true);
-  document.addEventListener('change', (event) => actionHandler(event, 'change'), true);
-  document.addEventListener('submit', (event) => actionHandler(event, 'submit'), true);
+  const getModifiers = (event) => ({
+    alt: !!event.altKey,
+    ctrl: !!event.ctrlKey,
+    meta: !!event.metaKey,
+    shift: !!event.shiftKey
+  });
+
+  let dragSource = null;
+  let pageScrollTimer;
+  let elementScrollTimers = new WeakMap();
+  let hoverTimer;
+
+  document.addEventListener('click', (event) => {
+    actionHandler(event, 'click', {
+      button: event.button,
+      modifiers: getModifiers(event)
+    });
+  }, true);
+  document.addEventListener('dblclick', (event) => {
+    actionHandler(event, 'dblclick', { modifiers: getModifiers(event) });
+  }, true);
+
+  document.addEventListener('mouseover', (event) => {
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => actionHandler(event, 'hover'), 120);
+  }, true);
+
+  document.addEventListener('dragstart', (event) => {
+    dragSource = event.target instanceof Element ? buildSelectors(event.target).primarySelector : null;
+  }, true);
+  document.addEventListener('drop', (event) => {
+    if (!dragSource) return;
+    actionHandler(event, 'drag_and_drop', {
+      sourceSelector: dragSource,
+      targetSelector: buildSelectors(event.target).primarySelector
+    });
+    dragSource = null;
+  }, true);
+
+  document.addEventListener('input', (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      actionHandler(event, 'fill');
+    }
+  }, true);
+
+  document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+      actionHandler(event, 'check', { checked: target.checked });
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.type === 'radio') {
+      actionHandler(event, 'check', { checked: true });
+      return;
+    }
+    if (target instanceof HTMLSelectElement) {
+      actionHandler(event, 'select', { value: target.value });
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.type === 'file') {
+      actionHandler(event, 'set_input_files', { files: Array.from(target.files || []).map((f) => f.name) });
+    }
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Meta' || event.key === 'Alt') {
+      return;
+    }
+    const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
+    if (hasModifier) {
+      const keys = [];
+      if (event.ctrlKey) keys.push('Control');
+      if (event.metaKey) keys.push('Meta');
+      if (event.altKey) keys.push('Alt');
+      if (event.shiftKey) keys.push('Shift');
+      keys.push(event.key);
+      actionHandler(event, 'hotkey', { combo: keys.join('+') });
+      return;
+    }
+    if (event.key.length === 1) {
+      return;
+    }
+    actionHandler(event, 'press', { key: event.key });
+  }, true);
+
+  document.addEventListener('scroll', (event) => {
+    const target = event.target;
+    if (target === document || target === document.documentElement || target === document.body) {
+      clearTimeout(pageScrollTimer);
+      pageScrollTimer = setTimeout(() => {
+        emit({ actionType: 'scroll_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] }, details: { positionY: window.scrollY } });
+      }, 150);
+      return;
+    }
+    if (target instanceof Element) {
+      const existing = elementScrollTimers.get(target);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        emit({
+          actionType: 'scroll_element',
+          url: window.location.href,
+          selectors: buildSelectors(target),
+          target: buildTarget(target),
+          details: { scrollTop: target.scrollTop }
+        });
+      }, 150);
+      elementScrollTimers.set(target, timer);
+    }
+  }, true);
+
+  const originalScrollIntoView = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function(...args) {
+    emit({
+      actionType: 'scroll_into_view',
+      url: window.location.href,
+      selectors: buildSelectors(this),
+      target: buildTarget(this)
+    });
+    return originalScrollIntoView.apply(this, args);
+  };
+
+  let historyIndex = history.length;
+  const wrapHistory = (method) => {
+    const original = history[method];
+    history[method] = function(...args) {
+      const result = original.apply(this, args);
+      emit({ actionType: 'navigation', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
+      return result;
+    };
+  };
+  wrapHistory('pushState');
+  wrapHistory('replaceState');
+  window.addEventListener('popstate', () => {
+    const nextLength = history.length;
+    const actionType = nextLength < historyIndex ? 'goBack' : 'goForward';
+    historyIndex = nextLength;
+    emit({ actionType, url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
+  });
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      emit({ actionType: 'tab_switch', url: window.location.href });
+      emit({ actionType: 'switch_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
     }
   });
 })();

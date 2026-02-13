@@ -135,7 +135,7 @@ describe("scriber integration", () => {
     const actions = await parseJsonl<{ actionType: string }>(
       await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
     );
-    const inputActions = actions.filter((action) => action.actionType === "input");
+    const inputActions = actions.filter((action) => action.actionType === "fill");
     expect(inputActions).toHaveLength(1);
   });
 
@@ -162,8 +162,8 @@ describe("scriber integration", () => {
     const actions = await parseJsonl<{ actionType: string; pageId: string }>(
       await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
     );
-    const popupAction = actions.find((action) => action.actionType === "popup_open");
-    const tabSwitch = actions.find((action) => action.actionType === "tab_switch");
+    const popupAction = actions.find((action) => action.actionType === "popup");
+    const tabSwitch = actions.find((action) => action.actionType === "switch_page");
     expect(popupAction).toBeTruthy();
     expect(tabSwitch).toBeTruthy();
     if (popupAction && tabSwitch) {
@@ -209,10 +209,10 @@ describe("scriber integration", () => {
     }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
 
     const textAction = actions.find(
-      (action) => action.actionType === "input" && action.target?.type === "text"
+      (action) => action.actionType === "fill" && action.target?.type === "text"
     );
     const passwordAction = actions.find(
-      (action) => action.actionType === "input" && action.target?.type === "password"
+      (action) => action.actionType === "fill" && action.target?.type === "password"
     );
 
     expect(textAction?.target?.value).toBe("Alice");
