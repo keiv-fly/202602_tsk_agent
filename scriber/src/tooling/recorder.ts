@@ -666,8 +666,18 @@ const createInitScript = () => `
   }, true);
 
   document.addEventListener('mouseover', (event) => {
+    const target = event.target;
+    if (target instanceof Element && ['html', 'body'].includes(target.tagName.toLowerCase())) {
+      return;
+    }
     clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => actionHandler(event, 'hover'), 120);
+    hoverTimer = setTimeout(() => {
+      const latestTarget = event.target;
+      if (latestTarget instanceof Element && ['html', 'body'].includes(latestTarget.tagName.toLowerCase())) {
+        return;
+      }
+      actionHandler(event, 'hover');
+    }, 120);
   }, true);
 
   document.addEventListener('dragstart', (event) => {
