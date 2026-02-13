@@ -218,4 +218,29 @@ describe("scriber integration", () => {
     expect(textAction?.target?.value).toBe("Alice");
     expect(passwordAction?.target?.value).toBe("********");
   });
+
+  it("truncates hover text and fallback selectors to 1000 characters", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/hover-long-text`,
+      outputDir
+    });
+
+    await result.page.hover("#long-hover");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{
+      actionType: string;
+      target?: { text?: string };
+      fallbackSelectors?: string[];
+    }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
+    const hoverAction = actions.find((action) => action.actionType === "hover");
+    expect(hoverAction).toBeTruthy();
+    expect(hoverAction?.target?.text?.length).toBe(1000);
+    expect(hoverAction?.fallbackSelectors?.every((selector) => selector.length <= 1000)).toBe(
+      true
+    );
+  });
 });

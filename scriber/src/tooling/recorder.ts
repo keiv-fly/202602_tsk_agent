@@ -631,14 +631,34 @@ const createInitScript = () => `
     }
   };
 
+  const truncateText = (value, maxLength = 1000) => {
+    if (typeof value !== 'string') return value;
+    return value.length > maxLength ? value.slice(0, maxLength) : value;
+  };
+
+  const truncateHoverPayload = (target, selectors) => {
+    if (target?.text) {
+      target.text = truncateText(target.text);
+    }
+    if (Array.isArray(selectors?.fallbackSelectors)) {
+      selectors.fallbackSelectors = selectors.fallbackSelectors.map((selector) =>
+        truncateText(selector)
+      );
+    }
+  };
+
   const actionHandler = (event, actionType, details) => {
     const target = event.target;
     const selectors = buildSelectors(target);
+    const targetMetadata = buildTarget(target);
+    if (actionType === 'hover') {
+      truncateHoverPayload(targetMetadata, selectors);
+    }
     emit({
       actionType,
       url: window.location.href,
       selectors,
-      target: buildTarget(target),
+      target: targetMetadata,
       details
     });
   };

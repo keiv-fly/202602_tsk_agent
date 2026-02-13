@@ -80,6 +80,11 @@ const routes: Record<string, string> = {
   "/popup-b": htmlShell(`
     <h1>Popup</h1>
     <button id="approve-btn">Approve</button>
+  `),
+  "/hover-long-text": htmlShell(`
+    <div id="long-hover">
+      ${"x".repeat(1200)}
+    </div>
   `)
 };
 
