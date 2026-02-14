@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { startTool } from "../src/tool.js";
 import { gunzipHtml } from "../src/tooling/dom.js";
 import { parseJsonl } from "../src/tooling/jsonl.js";
-import { snapshotFilename, snapshotPath } from "../src/tooling/paths.js";
+import { snapshotPath } from "../src/tooling/paths.js";
 import { startTestServer, TestServer } from "./support/testSite.js";
 
 const waitForArtifacts = async (page: { waitForTimeout: (ms: number) => Promise<void> }) => {
@@ -39,7 +39,8 @@ describe("scriber integration", () => {
     const files = await readdir(outputDir);
     expect(files).toContain("meta.json");
     expect(files).toContain("actions.jsonl");
-    expect(files).toContain("screenshots");
+    expect(files).toContain("session.webm");
+    expect(files).not.toContain("screenshots");
     expect(files).toContain("dom");
   });
 
@@ -67,20 +68,8 @@ describe("scriber integration", () => {
     if (!clickAction) {
       return;
     }
-    const expectedBeforeScreenshot = snapshotFilename(
-      clickAction.stepNumber,
-      clickAction.actionId,
-      "before",
-      "png"
-    );
-    const expectedAfterScreenshot = snapshotFilename(
-      clickAction.stepNumber,
-      clickAction.actionId,
-      "after",
-      "png"
-    );
-    expect(clickAction.beforeScreenshotFileName).toBe(expectedBeforeScreenshot);
-    expect(clickAction.afterScreenshotFileName).toBe(expectedAfterScreenshot);
+    expect(clickAction.beforeScreenshotFileName).toBeNull();
+    expect(clickAction.afterScreenshotFileName).toBeNull();
 
     const beforeDomPath = snapshotPath(
       outputDir,
@@ -114,12 +103,8 @@ describe("scriber integration", () => {
     const consolidatedClickAction = consolidatedActions.find(
       (action) => action.actionType === "click"
     );
-    expect(consolidatedClickAction?.beforeScreenshotFileName).toBe(
-      expectedBeforeScreenshot
-    );
-    expect(consolidatedClickAction?.afterScreenshotFileName).toBe(
-      expectedAfterScreenshot
-    );
+    expect(consolidatedClickAction?.beforeScreenshotFileName).toBeNull();
+    expect(consolidatedClickAction?.afterScreenshotFileName).toBeNull();
   });
 
   it("waits for settled DOM mutations before after snapshots", async () => {

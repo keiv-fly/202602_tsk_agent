@@ -12,7 +12,7 @@ const { version: playwrightVersion } = require("playwright/package.json") as {
 import { InputDebouncer } from "./debounce.js";
 import { gzipHtml } from "./dom.js";
 import { appendJsonl } from "./jsonl.js";
-import { snapshotFilename, snapshotPath } from "./paths.js";
+import { snapshotPath } from "./paths.js";
 import { RedactionRule, redactValue } from "./redaction.js";
 import {
   ActionRecord,
@@ -31,7 +31,6 @@ export interface RecorderSession {
 interface RecorderOptions {
   sessionId: string;
   outputDir: string;
-  fullPageScreenshots: boolean;
   debounceMs: number;
   quietWindowMs: number;
   quietTimeoutMs: number;
@@ -60,9 +59,6 @@ export class ScriberRecorder {
   private pageIds = new Map<Page, string>();
   private primaryPage: Page | null = null;
   private lastPageUrlById = new Map<string, string>();
-  private latestScreenshotByPageId = new Map<string, Uint8Array>();
-  private previewCaptureIntervals = new Map<string, ReturnType<typeof setInterval>>();
-  private previewCaptureInFlight = new Set<string>();
   private stepNumber = 0;
   private actions: RecordedAction[] = [];
   private inputDebouncer: InputDebouncer<PendingInput>;
@@ -94,11 +90,7 @@ export class ScriberRecorder {
           actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
-          beforeScreenshotFileName: this.getScreenshotFileName(
-            pending.stepNumber,
-            pending.actionId,
-            "before"
-          ),
+          beforeScreenshotFileName: null,
           afterScreenshotFileName: null,
           target: pending.target,
           primarySelector: pending.selectors.primarySelector,
@@ -122,9 +114,6 @@ export class ScriberRecorder {
   }
 
   private async ensureDirectories() {
-    await mkdir(resolve(this.options.outputDir, "screenshots"), {
-      recursive: true
-    });
     await mkdir(resolve(this.options.outputDir, "dom"), { recursive: true });
   }
 
@@ -174,7 +163,6 @@ export class ScriberRecorder {
 
     page.on("close", () => {
       this.pageIds.delete(page);
-      this.stopPreviewCapture(pageId);
     });
 
     const opener = await page.opener();
@@ -218,12 +206,10 @@ export class ScriberRecorder {
     });
 
     this.lastPageUrlById.set(pageId, page.url());
-    this.startPreviewCapture(page, pageId);
   }
 
   async stop({ endTimestamp }: { endTimestamp: string }) {
     this.closing = true;
-    this.stopAllPreviewCaptures();
     if (this.inputDebouncer.hasPending) {
       await this.inputDebouncer.flush();
     }
@@ -349,16 +335,6 @@ export class ScriberRecorder {
     };
 
     if (payload.actionType === "click") {
-      action.beforeScreenshotFileName = this.getScreenshotFileName(
-        stepNumber,
-        actionId,
-        "before"
-      );
-      action.afterScreenshotFileName = this.getScreenshotFileName(
-        stepNumber,
-        actionId,
-        "after"
-      );
       await this.safeCaptureSnapshot(page, {
         actionId,
         stepNumber,
@@ -445,14 +421,6 @@ export class ScriberRecorder {
   }
 
   private async captureSnapshot(page: Page, descriptor: SnapshotDescriptor) {
-    const screenshotPath = snapshotPath(
-      this.options.outputDir,
-      "screenshots",
-      descriptor.stepNumber,
-      descriptor.actionId,
-      descriptor.phase,
-      "png"
-    );
     const domPath = snapshotPath(
       this.options.outputDir,
       "dom",
@@ -461,18 +429,6 @@ export class ScriberRecorder {
       descriptor.phase,
       "html.gz"
     );
-
-    const cachedScreenshot =
-      descriptor.phase === "before"
-        ? this.latestScreenshotByPageId.get(descriptor.pageId)
-        : undefined;
-    if (cachedScreenshot) {
-      await writeFile(screenshotPath, cachedScreenshot);
-    } else {
-      const screenshot = await this.captureScreenshotBuffer(page);
-      await writeFile(screenshotPath, screenshot);
-      this.latestScreenshotByPageId.set(descriptor.pageId, screenshot);
-    }
 
     const html = await page.evaluate(() => {
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
@@ -491,62 +447,6 @@ export class ScriberRecorder {
 
     const gzipBuffer = await gzipHtml(html);
     await writeFile(domPath, gzipBuffer);
-  }
-
-  private startPreviewCapture(page: Page, pageId: string) {
-    this.track(this.refreshLatestScreenshot(page, pageId));
-    const interval = setInterval(() => {
-      this.track(this.refreshLatestScreenshot(page, pageId));
-    }, 500);
-    this.previewCaptureIntervals.set(pageId, interval);
-  }
-
-  private stopPreviewCapture(pageId: string) {
-    const interval = this.previewCaptureIntervals.get(pageId);
-    if (interval) {
-      clearInterval(interval);
-      this.previewCaptureIntervals.delete(pageId);
-    }
-    this.previewCaptureInFlight.delete(pageId);
-    this.latestScreenshotByPageId.delete(pageId);
-  }
-
-  private stopAllPreviewCaptures() {
-    for (const [pageId, interval] of this.previewCaptureIntervals.entries()) {
-      clearInterval(interval);
-      this.previewCaptureIntervals.delete(pageId);
-    }
-    this.previewCaptureInFlight.clear();
-    this.latestScreenshotByPageId.clear();
-  }
-
-  private async refreshLatestScreenshot(page: Page, pageId: string) {
-    if (this.closing || this.previewCaptureInFlight.has(pageId)) {
-      return;
-    }
-    this.previewCaptureInFlight.add(pageId);
-    try {
-      const screenshot = await this.captureScreenshotBuffer(page);
-      this.latestScreenshotByPageId.set(pageId, screenshot);
-    } catch {
-      // Ignore preview capture errors (e.g., page navigating/closing).
-    } finally {
-      this.previewCaptureInFlight.delete(pageId);
-    }
-  }
-
-  private async captureScreenshotBuffer(page: Page): Promise<Uint8Array> {
-    return page.screenshot({
-      fullPage: this.options.fullPageScreenshots
-    });
-  }
-
-  private getScreenshotFileName(
-    stepNumber: number,
-    actionId: string,
-    phase: "before" | "after"
-  ) {
-    return snapshotFilename(stepNumber, actionId, phase, "png");
   }
 
   private nextStepNumber() {

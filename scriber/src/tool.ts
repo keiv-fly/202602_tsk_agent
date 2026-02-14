@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -9,7 +9,6 @@ export interface StartOptions {
   headless?: boolean;
   startUrl?: string;
   outputDir?: string;
-  fullPageScreenshots?: boolean;
   viewport?: { width: number; height: number };
   debounceMs?: number;
   quietWindowMs?: number;
@@ -25,6 +24,7 @@ export interface StartResult extends RecorderSession {
 }
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+const RECORDED_VIDEO_FILE = "session.webm";
 
 const normalizeStartUrl = (value?: string): string => {
   const trimmed = value?.trim();
@@ -109,8 +109,9 @@ export const startTool = async (
   const sessionId = buildSessionId(startUrl, startedAt);
   const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
   await mkdir(outputDir, { recursive: true });
-  await mkdir(resolve(outputDir, "screenshots"), { recursive: true });
   await mkdir(resolve(outputDir, "dom"), { recursive: true });
+  const videoStagingDir = resolve(outputDir, ".video");
+  await mkdir(videoStagingDir, { recursive: true });
 
   const viewport = normalizeViewport(options.viewport);
   const headless = options.headless ?? true;
@@ -121,14 +122,18 @@ export const startTool = async (
 
   const context = await browser.newContext({
     viewport,
-    deviceScaleFactor: 1
+    deviceScaleFactor: 1,
+    recordVideo: {
+      dir: videoStagingDir,
+      size: viewport
+    }
   });
   const page = await context.newPage();
+  const pageVideo = page.video();
 
   const recorder = new ScriberRecorder({
     sessionId,
     outputDir,
-    fullPageScreenshots: options.fullPageScreenshots ?? false,
     debounceMs: options.debounceMs ?? 500,
     quietWindowMs: options.quietWindowMs ?? 300,
     quietTimeoutMs: options.quietTimeoutMs ?? 5000,
@@ -173,6 +178,10 @@ export const startTool = async (
       "utf8"
     );
     await context.close();
+    if (pageVideo) {
+      await pageVideo.saveAs(resolve(outputDir, RECORDED_VIDEO_FILE));
+    }
+    await rm(videoStagingDir, { recursive: true, force: true });
     await browser.close();
   };
 
