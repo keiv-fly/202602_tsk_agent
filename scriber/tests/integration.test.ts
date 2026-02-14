@@ -174,6 +174,55 @@ describe("scriber integration", () => {
     expect(inputActions).toHaveLength(1);
   });
 
+  it("captures click provenance metadata for real and programmatic clicks", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.click("#toggle-btn");
+    await result.page.evaluate(() => {
+      const button = document.getElementById("toggle-btn");
+      if (button instanceof HTMLElement) {
+        button.click();
+      }
+    });
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{
+      actionType: string;
+      details?: {
+        isTrusted?: boolean;
+        eventSequence?: {
+          pointerdown?: boolean;
+          mousedown?: boolean;
+          mouseup?: boolean;
+        };
+        programmaticClick?: boolean;
+        likelySynthetic?: boolean;
+      };
+    }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
+
+    const clickActions = actions.filter((action) => action.actionType === "click");
+    expect(clickActions.length).toBeGreaterThanOrEqual(2);
+    expect(clickActions.some((action) => typeof action.details?.isTrusted === "boolean")).toBe(
+      true
+    );
+    expect(clickActions.some((action) => action.details?.programmaticClick === true)).toBe(true);
+    expect(clickActions.some((action) => action.details?.likelySynthetic === true)).toBe(true);
+    expect(
+      clickActions.some(
+        (action) =>
+          action.details?.eventSequence?.pointerdown === true &&
+          action.details?.eventSequence?.mousedown === true &&
+          action.details?.eventSequence?.mouseup === true
+      )
+    ).toBe(true);
+  });
+
   it("records popup flows and tab switches", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({

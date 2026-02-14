@@ -536,13 +536,9 @@ export class ScriberRecorder {
   }
 
   private async captureScreenshotBuffer(page: Page): Promise<Uint8Array> {
-    let screenshot: Uint8Array | null = null;
-    await this.maskPasswordsForScreenshot(page, async () => {
-      screenshot = await page.screenshot({
-        fullPage: this.options.fullPageScreenshots
-      });
+    return page.screenshot({
+      fullPage: this.options.fullPageScreenshots
     });
-    return screenshot ?? new Uint8Array();
   }
 
   private getScreenshotFileName(
@@ -551,41 +547,6 @@ export class ScriberRecorder {
     phase: "before" | "after"
   ) {
     return snapshotFilename(stepNumber, actionId, phase, "png");
-  }
-
-  private async maskPasswordsForScreenshot(
-    page: Page,
-    callback: () => Promise<void>
-  ) {
-    const state = await page.evaluate(() => {
-      const inputs = Array.from(document.querySelectorAll("input"));
-      const passwordInputs = inputs.filter(
-        (input) =>
-          input instanceof HTMLInputElement &&
-          input.type.toLowerCase() === "password"
-      ) as HTMLInputElement[];
-      const values = passwordInputs.map((input) => input.value);
-      passwordInputs.forEach((input) => {
-        input.value = "********";
-      });
-      return values;
-    });
-
-    try {
-      await callback();
-    } finally {
-      await page.evaluate((values) => {
-        const inputs = Array.from(document.querySelectorAll("input"));
-        const passwordInputs = inputs.filter(
-          (input) =>
-            input instanceof HTMLInputElement &&
-            input.type.toLowerCase() === "password"
-        ) as HTMLInputElement[];
-        passwordInputs.forEach((input, index) => {
-          input.value = values[index] ?? "";
-        });
-      }, state);
-    }
   }
 
   private nextStepNumber() {
@@ -759,15 +720,134 @@ const createInitScript = () => `
     shift: !!event.shiftKey
   });
 
+  const CLICK_EVENT_MATCH_WINDOW_MS = 1500;
+
+  const isSameOrRelatedTarget = (a, b) => {
+    if (!(a instanceof Node) || !(b instanceof Node)) {
+      return false;
+    }
+    return a === b || a.contains(b) || b.contains(a);
+  };
+
+  const capturePointerContext = (event) => {
+    const isPointerEvent =
+      typeof PointerEvent !== 'undefined' && event instanceof PointerEvent;
+    return {
+      timestamp: performance.now(),
+      target: event.target,
+      isTrusted: event.isTrusted,
+      button: event.button,
+      buttons: event.buttons,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerType: isPointerEvent ? event.pointerType : undefined
+    };
+  };
+
+  const getRelativeTimingMs = (record, now) =>
+    record ? Number((now - record.timestamp).toFixed(3)) : null;
+
+  const getRelatedContext = (record, target, now) => {
+    if (!record) {
+      return null;
+    }
+    if (now - record.timestamp > CLICK_EVENT_MATCH_WINDOW_MS) {
+      return null;
+    }
+    if (!isSameOrRelatedTarget(record.target, target)) {
+      return null;
+    }
+    return record;
+  };
+
+  const buildClickDiagnostics = (event, pointerDown, mouseDown, mouseUp, programmaticClick) => {
+    const now = performance.now();
+    const relatedPointerDown = getRelatedContext(pointerDown, event.target, now);
+    const relatedMouseDown = getRelatedContext(mouseDown, event.target, now);
+    const relatedMouseUp = getRelatedContext(mouseUp, event.target, now);
+    const relatedProgrammatic = getRelatedContext(programmaticClick, event.target, now);
+    const hasPointerSequence = !!(
+      relatedPointerDown &&
+      relatedMouseDown &&
+      relatedMouseUp
+    );
+    const likelySynthetic =
+      event.isTrusted === false || !hasPointerSequence || !!relatedProgrammatic;
+
+    return {
+      isTrusted: event.isTrusted,
+      clickCount: event.detail,
+      sourceEventType: event.constructor?.name || 'MouseEvent',
+      eventSequence: {
+        pointerdown: !!relatedPointerDown,
+        mousedown: !!relatedMouseDown,
+        mouseup: !!relatedMouseUp
+      },
+      programmaticClick: !!relatedProgrammatic,
+      likelySynthetic,
+      pointerType:
+        relatedPointerDown?.pointerType ||
+        (typeof PointerEvent !== 'undefined' && event instanceof PointerEvent
+          ? event.pointerType
+          : undefined),
+      timingsMs: {
+        sincePointerDown: getRelativeTimingMs(relatedPointerDown, now),
+        sinceMouseDown: getRelativeTimingMs(relatedMouseDown, now),
+        sinceMouseUp: getRelativeTimingMs(relatedMouseUp, now),
+        sinceProgrammaticClick: getRelativeTimingMs(relatedProgrammatic, now)
+      },
+      coordinates: {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY
+      }
+    };
+  };
+
   let dragSource = null;
   let pageScrollTimer;
   let elementScrollTimers = new WeakMap();
   let hoverTimer;
+  let lastPointerDown = null;
+  let lastMouseDown = null;
+  let lastMouseUp = null;
+  let lastProgrammaticClick = null;
+
+  document.addEventListener('pointerdown', (event) => {
+    lastPointerDown = capturePointerContext(event);
+  }, true);
+
+  document.addEventListener('mousedown', (event) => {
+    lastMouseDown = capturePointerContext(event);
+  }, true);
+
+  document.addEventListener('mouseup', (event) => {
+    lastMouseUp = capturePointerContext(event);
+  }, true);
+
+  const originalElementClick = HTMLElement.prototype.click;
+  HTMLElement.prototype.click = function(...args) {
+    lastProgrammaticClick = {
+      timestamp: performance.now(),
+      target: this,
+      isTrusted: false
+    };
+    return originalElementClick.apply(this, args);
+  };
 
   document.addEventListener('click', (event) => {
+    const clickDiagnostics = buildClickDiagnostics(
+      event,
+      lastPointerDown,
+      lastMouseDown,
+      lastMouseUp,
+      lastProgrammaticClick
+    );
     actionHandler(event, 'click', {
       button: event.button,
-      modifiers: getModifiers(event)
+      modifiers: getModifiers(event),
+      ...clickDiagnostics
     });
   }, true);
   document.addEventListener('dblclick', (event) => {

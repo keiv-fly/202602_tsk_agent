@@ -24,6 +24,8 @@ export interface StartResult extends RecorderSession {
   timezone: string;
 }
 
+const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+
 const normalizeStartUrl = (value?: string): string => {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -84,6 +86,21 @@ const buildSessionId = (startUrl: string, startedAt: Date) => {
   return `${formatSessionTimestamp(startedAt)}_${deriveSessionDomain(startUrl)}`;
 };
 
+const normalizeViewport = (viewport?: {
+  width: number;
+  height: number;
+}): { width: number; height: number } => {
+  const width =
+    typeof viewport?.width === "number" && Number.isFinite(viewport.width)
+      ? Math.max(1, Math.floor(viewport.width))
+      : DEFAULT_VIEWPORT.width;
+  const height =
+    typeof viewport?.height === "number" && Number.isFinite(viewport.height)
+      ? Math.max(1, Math.floor(viewport.height))
+      : DEFAULT_VIEWPORT.height;
+  return { width, height };
+};
+
 export const startTool = async (
   options: StartOptions = {}
 ): Promise<StartResult> => {
@@ -95,12 +112,17 @@ export const startTool = async (
   await mkdir(resolve(outputDir, "screenshots"), { recursive: true });
   await mkdir(resolve(outputDir, "dom"), { recursive: true });
 
+  const viewport = normalizeViewport(options.viewport);
+  const headless = options.headless ?? true;
   const browser = await chromium.launch({
-    headless: options.headless ?? true
+    headless,
+    args: headless ? [] : [`--window-size=${viewport.width},${viewport.height}`]
   });
 
-  const viewport = options.viewport ?? { width: 1280, height: 720 };
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 1
+  });
   const page = await context.newPage();
 
   const recorder = new ScriberRecorder({
