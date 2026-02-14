@@ -713,8 +713,96 @@ const createInitScript = () => `
   let lastMouseDown = null;
   let lastMouseUp = null;
   let lastProgrammaticClick = null;
+  let syntheticCursor = null;
+
+  const getSyntheticCursor = () => {
+    if (syntheticCursor && syntheticCursor.isConnected) {
+      return syntheticCursor;
+    }
+    const existing = document.getElementById('__scriberSyntheticCursor');
+    if (existing instanceof HTMLElement) {
+      syntheticCursor = existing;
+      return syntheticCursor;
+    }
+    const root = document.documentElement || document.body;
+    if (!root) {
+      return null;
+    }
+    syntheticCursor = document.createElement('div');
+    syntheticCursor.id = '__scriberSyntheticCursor';
+    syntheticCursor.setAttribute('aria-hidden', 'true');
+    syntheticCursor.style.position = 'fixed';
+    syntheticCursor.style.top = '0';
+    syntheticCursor.style.left = '0';
+    syntheticCursor.style.width = '14px';
+    syntheticCursor.style.height = '14px';
+    syntheticCursor.style.border = '2px solid rgba(255, 255, 255, 0.95)';
+    syntheticCursor.style.background = 'rgba(0, 0, 0, 0.35)';
+    syntheticCursor.style.borderRadius = '999px';
+    syntheticCursor.style.boxSizing = 'border-box';
+    syntheticCursor.style.mixBlendMode = 'difference';
+    syntheticCursor.style.pointerEvents = 'none';
+    syntheticCursor.style.zIndex = '2147483647';
+    syntheticCursor.style.opacity = '0';
+    syntheticCursor.style.transform = 'translate(-9999px, -9999px)';
+    syntheticCursor.style.transition = 'opacity 80ms linear';
+    syntheticCursor.style.willChange = 'transform, opacity';
+    root.appendChild(syntheticCursor);
+    return syntheticCursor;
+  };
+
+  const moveSyntheticCursor = (event) => {
+    const cursor = getSyntheticCursor();
+    if (!cursor) {
+      return;
+    }
+    const x = Math.round(event.clientX - 7);
+    const y = Math.round(event.clientY - 7);
+    cursor.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+    cursor.style.opacity = '1';
+  };
+
+  const hideSyntheticCursor = () => {
+    const cursor = getSyntheticCursor();
+    if (!cursor) {
+      return;
+    }
+    cursor.style.opacity = '0';
+  };
+
+  const pulseSyntheticCursor = () => {
+    const cursor = getSyntheticCursor();
+    if (!cursor) {
+      return;
+    }
+    cursor.animate(
+      [
+        { transform: cursor.style.transform + ' scale(1)', opacity: 1 },
+        { transform: cursor.style.transform + ' scale(1.35)', opacity: 0.75 },
+        { transform: cursor.style.transform + ' scale(1)', opacity: 1 }
+      ],
+      { duration: 180, easing: 'ease-out' }
+    );
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    moveSyntheticCursor(event);
+  }, true);
+  document.addEventListener('mousemove', (event) => {
+    moveSyntheticCursor(event);
+  }, true);
+  document.addEventListener('pointerout', (event) => {
+    if (event.relatedTarget === null) {
+      hideSyntheticCursor();
+    }
+  }, true);
+  window.addEventListener('blur', () => {
+    hideSyntheticCursor();
+  });
 
   document.addEventListener('pointerdown', (event) => {
+    moveSyntheticCursor(event);
+    pulseSyntheticCursor();
     lastPointerDown = capturePointerContext(event);
   }, true);
 
