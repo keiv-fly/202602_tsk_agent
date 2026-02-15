@@ -26,6 +26,33 @@ export interface StartResult extends RecorderSession {
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 const RECORDED_VIDEO_FILE = "video.webm";
 
+const resolveExistingVideoPath = async (outputDir: string) => {
+  const { readdir, rename } = await import("node:fs/promises");
+  const entries = await readdir(outputDir, { withFileTypes: true });
+  const webmNames = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".webm"))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+
+  if (webmNames.length === 0) {
+    return null;
+  }
+
+  if (webmNames.includes(RECORDED_VIDEO_FILE)) {
+    return resolve(outputDir, RECORDED_VIDEO_FILE);
+  }
+
+  const fallbackPath = resolve(outputDir, webmNames[0]);
+  const canonicalPath = resolve(outputDir, RECORDED_VIDEO_FILE);
+  try {
+    await rename(fallbackPath, canonicalPath);
+    return canonicalPath;
+  } catch {
+    // Keep the fallback path if a rename fails for any reason.
+    return fallbackPath;
+  }
+};
+
 const normalizeStartUrl = (value?: string): string => {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -171,7 +198,11 @@ export const startTool = async (
     const endTimestamp = new Date().toISOString();
     await recorder.prepareStop();
     let finalizedVideoPath: string | null = null;
-    await context.close();
+    try {
+      await context.close();
+    } catch {
+      // The browser/window may have been closed manually before stop().
+    }
     if (pageVideo) {
       try {
         await pageVideo.saveAs(videoPath);
@@ -180,6 +211,9 @@ export const startTool = async (
       } catch {
         // No video frames (e.g. very short session) — skip save and cleanup
       }
+    }
+    if (!finalizedVideoPath) {
+      finalizedVideoPath = await resolveExistingVideoPath(outputDir);
     }
     await recorder.finalizeStop({
       endTimestamp,
@@ -192,7 +226,11 @@ export const startTool = async (
       JSON.stringify(finalMeta, null, 2),
       "utf8"
     );
-    await browser.close();
+    try {
+      await browser.close();
+    } catch {
+      // Ignore browser-close errors if the process already exited.
+    }
   };
 
   return {
