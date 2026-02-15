@@ -24,7 +24,7 @@ export interface StartResult extends RecorderSession {
 }
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
-const RECORDED_VIDEO_FILE = "session.webm";
+const RECORDED_VIDEO_FILE = "video.webm";
 
 const normalizeStartUrl = (value?: string): string => {
   const trimmed = value?.trim();
@@ -110,8 +110,6 @@ export const startTool = async (
   const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
   await mkdir(outputDir, { recursive: true });
   await mkdir(resolve(outputDir, "dom"), { recursive: true });
-  const videoStagingDir = resolve(outputDir, ".video");
-  await mkdir(videoStagingDir, { recursive: true });
 
   const viewport = normalizeViewport(options.viewport);
   const headless = options.headless ?? true;
@@ -120,11 +118,12 @@ export const startTool = async (
     args: headless ? [] : [`--window-size=${viewport.width},${viewport.height}`]
   });
 
+  const videoPath = resolve(outputDir, RECORDED_VIDEO_FILE);
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 1,
     recordVideo: {
-      dir: videoStagingDir,
+      dir: outputDir,
       size: viewport
     }
   });
@@ -179,9 +178,16 @@ export const startTool = async (
     );
     await context.close();
     if (pageVideo) {
-      await pageVideo.saveAs(resolve(outputDir, RECORDED_VIDEO_FILE));
+      try {
+        const originalPath = await pageVideo.path();
+        await pageVideo.saveAs(videoPath);
+        if (originalPath && originalPath !== videoPath) {
+          await rm(originalPath, { force: true });
+        }
+      } catch {
+        // No video frames (e.g. very short session) — skip save and cleanup
+      }
     }
-    await rm(videoStagingDir, { recursive: true, force: true });
     await browser.close();
   };
 
