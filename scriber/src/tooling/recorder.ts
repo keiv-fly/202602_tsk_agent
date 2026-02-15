@@ -49,6 +49,22 @@ interface PendingInput {
   details?: Record<string, unknown>;
 }
 
+interface PreActionPayload {
+  selectors?: { primarySelector: string | null; fallbackSelectors: string[] };
+  target?: TargetMetadata;
+  timestamp: number;
+}
+
+interface PreActionEvidence {
+  capturedAt: number;
+  target?: TargetMetadata;
+  selector: string | null;
+  screenshotBuffer: Buffer;
+  domGzip: Buffer;
+  pageTitle: string | null;
+  url: string;
+}
+
 interface RecordedAction {
   action: ActionRecord;
   snapshots: SnapshotDescriptor[];
@@ -65,6 +81,7 @@ export class ScriberRecorder {
   private inputDebouncer: InputDebouncer<PendingInput>;
   private closing = false;
   private pendingTasks = new Set<Promise<void>>();
+  private preActionEvidenceByPage = new Map<string, PreActionEvidence>();
 
   public readonly playwrightVersion = playwrightVersion;
 
@@ -94,14 +111,18 @@ export class ScriberRecorder {
           details: pending.details
         };
         if (page && this.shouldCaptureEvidence("fill")) {
-          action.urlBefore = page.url();
-          action.pageTitleBefore = await this.safeGetPageTitle(page);
-          await this.safeCaptureSnapshot(page, action, {
-            actionId: pending.actionId,
-            stepNumber: pending.stepNumber,
-            pageId: pending.pageId,
-            phase: "before"
-          });
+          const hasPreActionEvidence = await this.applyPreActionEvidence(pending.pageId, action);
+          if (!hasPreActionEvidence) {
+            action.urlBefore = page.url();
+            action.pageTitleBefore = await this.safeGetPageTitle(page);
+            await this.safeCaptureSnapshot(page, action, {
+              actionId: pending.actionId,
+              stepNumber: pending.stepNumber,
+              pageId: pending.pageId,
+              phase: "before"
+            });
+          }
+          await page.waitForTimeout(300);
           await this.safeCaptureSnapshot(page, action, {
             actionId: pending.actionId,
             stepNumber: pending.stepNumber,
@@ -163,6 +184,13 @@ export class ScriberRecorder {
       "__scriberEmit",
       (source, payload: RecorderPayload) => {
         void this.handlePayload(page, payload, source);
+      }
+    );
+
+    await page.exposeBinding(
+      "__scriberPrepareAction",
+      (_source, payload: PreActionPayload) => {
+        void this.handlePreAction(page, payload);
       }
     );
 
@@ -256,6 +284,101 @@ export class ScriberRecorder {
     );
   }
 
+  private async handlePreAction(page: Page, payload: PreActionPayload) {
+    if (this.closing) {
+      return;
+    }
+    const pageId = this.getPageId(page);
+    const evidence = await this.capturePreActionEvidence(page, payload);
+    if (!evidence) {
+      return;
+    }
+    this.preActionEvidenceByPage.set(pageId, evidence);
+  }
+
+  private async capturePreActionEvidence(page: Page, payload: PreActionPayload) {
+    try {
+      const html = await page.evaluate(() => {
+        const clone = document.documentElement.cloneNode(true) as HTMLElement;
+        const inputs = clone.querySelectorAll("input");
+        inputs.forEach((input) => {
+          if (
+            input instanceof HTMLInputElement &&
+            input.type.toLowerCase() === "password"
+          ) {
+            input.setAttribute("value", "********");
+          }
+        });
+        return `<!doctype html>${clone.outerHTML}`;
+      });
+      const screenshotBuffer = await page.screenshot({
+        type: "png",
+        fullPage: true,
+        animations: "disabled"
+      });
+      return {
+        capturedAt: payload.timestamp,
+        target: payload.target,
+        selector: payload.selectors?.primarySelector ?? null,
+        screenshotBuffer,
+        domGzip: await gzipHtml(html),
+        pageTitle: await this.safeGetPageTitle(page),
+        url: page.url()
+      } as PreActionEvidence;
+    } catch {
+      return null;
+    }
+  }
+
+  private isPreActionMatch(action: ActionRecord, evidence: PreActionEvidence) {
+    const actionTime = new Date(action.timestamp).getTime();
+    const delta = actionTime - evidence.capturedAt;
+    if (delta < 0 || delta > 2000) {
+      return false;
+    }
+    const actionSelector = action.primarySelector ?? null;
+    if (evidence.selector && actionSelector) {
+      return evidence.selector === actionSelector;
+    }
+    const actionId = action.target?.id;
+    const evidenceId = evidence.target?.id;
+    if (actionId && evidenceId) {
+      return actionId === evidenceId;
+    }
+    return true;
+  }
+
+  private async applyPreActionEvidence(pageId: string, action: ActionRecord) {
+    const evidence = this.preActionEvidenceByPage.get(pageId);
+    if (!evidence || !this.isPreActionMatch(action, evidence)) {
+      return false;
+    }
+    const domPath = snapshotPath(
+      this.options.outputDir,
+      "dom",
+      action.stepNumber,
+      action.actionId,
+      "before",
+      "html.gz"
+    );
+    const screenshotPath = snapshotPath(
+      this.options.outputDir,
+      "screenshots",
+      action.stepNumber,
+      action.actionId,
+      "before",
+      "png"
+    );
+
+    await writeFile(domPath, evidence.domGzip);
+    await writeFile(screenshotPath, evidence.screenshotBuffer);
+    action.beforeScreenshotFileName = screenshotPath.split("/").pop() ?? null;
+    action.urlBefore = evidence.url;
+    action.pageTitleBefore = evidence.pageTitle;
+    this.preActionEvidenceByPage.delete(pageId);
+    return true;
+  }
+
   private async handlePayload(
     page: Page,
     payload: RecorderPayload,
@@ -274,7 +397,8 @@ export class ScriberRecorder {
       target.text = target.text.slice(0, 120);
     }
     const actionType = payload.actionType;
-    const details = payload.details;
+    let details = payload.details;
+
 
     if (target?.value) {
       target.value = redactValue(
@@ -295,7 +419,7 @@ export class ScriberRecorder {
         url,
         target,
         selectors,
-        details: payload.details
+        details
       })
     );
   }
@@ -371,15 +495,23 @@ export class ScriberRecorder {
       details: payload.details
     };
 
-    if (this.shouldCaptureEvidence(payload.actionType)) {
-      action.urlBefore = page.url();
-      action.pageTitleBefore = await this.safeGetPageTitle(page);
-      await this.safeCaptureSnapshot(page, action, {
-        actionId,
-        stepNumber,
-        pageId,
-        phase: "before"
-      });
+    const shouldCapture =
+      this.shouldCaptureEvidence(payload.actionType) ||
+      (payload.actionType === "hover" && payload.details?.hoverUiChangeDetected === true);
+
+    if (shouldCapture) {
+      const hasPreActionEvidence = await this.applyPreActionEvidence(pageId, action);
+      if (!hasPreActionEvidence) {
+        action.urlBefore = page.url();
+        action.pageTitleBefore = await this.safeGetPageTitle(page);
+        await this.safeCaptureSnapshot(page, action, {
+          actionId,
+          stepNumber,
+          pageId,
+          phase: "before"
+        });
+      }
+      await page.waitForTimeout(300);
       await this.safeCaptureSnapshot(page, action, {
         actionId,
         stepNumber,
@@ -388,7 +520,7 @@ export class ScriberRecorder {
       });
     }
 
-    if (this.shouldCaptureEvidence(payload.actionType)) {
+    if (shouldCapture) {
       await page.waitForTimeout(800);
       await this.waitForDomQuiet(pageId);
       await this.safeCaptureSnapshot(page, action, {
@@ -629,6 +761,63 @@ const createInitScript = () => `
     return '/' + parts.join('/');
   };
 
+  const implicitRole = (target) => {
+    if (!(target instanceof Element)) return undefined;
+    const tag = target.tagName.toLowerCase();
+    if (tag === 'a' && target.hasAttribute('href')) return 'link';
+    if (tag === 'button') return 'button';
+    if (tag === 'textarea') return 'textbox';
+    if (tag === 'select') return 'combobox';
+    if (tag === 'img') return 'img';
+    if (tag === 'summary') return 'button';
+    if (tag === 'input') {
+      const type = (target.getAttribute('type') || 'text').toLowerCase();
+      if (['button', 'submit', 'reset'].includes(type)) return 'button';
+      if (type === 'checkbox') return 'checkbox';
+      if (type === 'radio') return 'radio';
+      if (type === 'range') return 'slider';
+      return 'textbox';
+    }
+    return undefined;
+  };
+
+  const getAssociatedLabelText = (target) => {
+    if (!(target instanceof Element)) return undefined;
+    const labelledBy = target.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const ids = labelledBy.split(/\s+/).filter(Boolean);
+      const labelledText = ids
+        .map((id) => document.getElementById(id)?.textContent?.trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if (labelledText) return labelledText;
+    }
+    const labelAttr = target.getAttribute('aria-label');
+    if (labelAttr?.trim()) return labelAttr.trim();
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+      if (target.labels && target.labels.length > 0) {
+        const text = Array.from(target.labels)
+          .map((label) => label.textContent?.trim())
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        if (text) return text;
+      }
+    }
+    const title = target.getAttribute('title');
+    if (title?.trim()) return title.trim();
+    const alt = target.getAttribute('alt');
+    if (alt?.trim()) return alt.trim();
+    const text = target.textContent?.trim();
+    if (text) return text;
+    const value = target.getAttribute('value');
+    if (value?.trim()) return value.trim();
+    return undefined;
+  };
+
+  const normalizeName = (value) => value?.replace(/\s+/g, ' ').trim();
+
   const buildSelectors = (target) => {
     if (!(target instanceof Element)) {
       return { primarySelector: null, fallbackSelectors: [] };
@@ -639,9 +828,12 @@ const createInitScript = () => `
     if (dataTestId) fallback.push('[data-testid="' + dataTestId + '"]');
     if (!dataTestId && dataTest) fallback.push('[data-test="' + dataTest + '"]');
     if (target.id) fallback.push('#' + CSS.escape(target.id));
-    const role = target.getAttribute('role') || target.tagName.toLowerCase();
-    const name = target.getAttribute('aria-label') || target.textContent?.trim();
-    if (role && name) fallback.push('role=' + role + '[name="' + name + '"]');
+    const role = target.getAttribute('role') || implicitRole(target) || target.tagName.toLowerCase();
+    const name = normalizeName(getAssociatedLabelText(target));
+    if (role && name) {
+      const escapedName = name.replace(/"/g, '\"');
+      fallback.push('role=' + role + '[name="' + escapedName + '"]');
+    }
     if (target.textContent && target.textContent.trim()) {
       fallback.push('text="' + target.textContent.trim() + '"');
     }
@@ -663,9 +855,10 @@ const createInitScript = () => `
       id: target.id || undefined,
       className: target.className || undefined,
       name: target.getAttribute('name') || undefined,
+      accessibleName: normalizeName(getAssociatedLabelText(target)),
       type: isInput ? target.type : undefined,
       value: isPassword ? '********' : (isInput ? target.value : undefined),
-      role: target.getAttribute('role') || undefined,
+      role: target.getAttribute('role') || implicitRole(target) || undefined,
       ariaLabel: target.getAttribute('aria-label') || undefined,
       text,
       isPassword
@@ -676,6 +869,17 @@ const createInitScript = () => `
     if (window.__scriberEmit) {
       window.__scriberEmit(payload);
     }
+  };
+
+  const emitPrepareAction = (target) => {
+    if (!window.__scriberPrepareAction) {
+      return;
+    }
+    window.__scriberPrepareAction({
+      timestamp: Date.now(),
+      selectors: buildSelectors(target),
+      target: buildTarget(target)
+    });
   };
 
   const truncateText = (value, maxLength = 1000) => {
@@ -692,6 +896,13 @@ const createInitScript = () => `
         truncateText(selector)
       );
     }
+  };
+
+  const domDigest = () => {
+    const nodeCount = document.getElementsByTagName('*').length;
+    const hiddenCount = document.querySelectorAll('[hidden]').length;
+    const textLength = document.body?.innerText?.length ?? 0;
+    return [nodeCount, hiddenCount, textLength].join('|');
   };
 
   const actionHandler = (event, actionType, details) => {
@@ -900,6 +1111,7 @@ const createInitScript = () => `
   document.addEventListener('pointerdown', (event) => {
     moveSyntheticCursor(event);
     pulseSyntheticCursor();
+    emitPrepareAction(event.target);
     lastPointerDown = capturePointerContext(event);
   }, true);
 
@@ -944,13 +1156,16 @@ const createInitScript = () => `
     if (target instanceof Element && ['html', 'body'].includes(target.tagName.toLowerCase())) {
       return;
     }
+    const digestBefore = domDigest();
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       const latestTarget = event.target;
       if (latestTarget instanceof Element && ['html', 'body'].includes(latestTarget.tagName.toLowerCase())) {
         return;
       }
-      actionHandler(event, 'hover');
+      actionHandler(event, 'hover', {
+        hoverUiChangeDetected: digestBefore !== domDigest()
+      });
     }, 120);
   }, true);
 
@@ -996,6 +1211,7 @@ const createInitScript = () => `
     if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Meta' || event.key === 'Alt') {
       return;
     }
+    emitPrepareAction(event.target);
     const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
     if (hasModifier) {
       const keys = [];

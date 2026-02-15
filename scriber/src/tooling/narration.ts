@@ -59,7 +59,7 @@ const shouldKeepForNarration = (actions: ActionRecord[], index: number) => {
   if (action.actionType !== "hover") {
     return true;
   }
-  return hasMeaningfulFollowUp(actions, index);
+  return hasMeaningfulFollowUp(actions, index) || action.details?.hoverUiChangeDetected === true;
 };
 
 export const buildNarrationRecords = (actions: ActionRecord[]): NarrationRecord[] => {
@@ -80,7 +80,7 @@ export const buildNarrationRecords = (actions: ActionRecord[]): NarrationRecord[
         navigationGroup,
         target: {
           role: action.target?.role ?? action.target?.tagName,
-          name: trimText(action.target?.ariaLabel ?? action.target?.name),
+          name: trimText(action.target?.accessibleName ?? action.target?.ariaLabel ?? action.target?.name),
           selector: action.primarySelector,
           visibleText: trimText(action.target?.text)
         },

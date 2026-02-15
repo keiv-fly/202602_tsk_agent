@@ -43,6 +43,21 @@ describe("narration builder", () => {
     expect(narration.some((entry) => entry.kind === "hover")).toBe(false);
   });
 
+
+  it("keeps hover actions that trigger a UI change", () => {
+    const actions: ActionRecord[] = [
+      mkAction({
+        actionId: "hover-2",
+        stepNumber: 4,
+        actionType: "hover",
+        details: { hoverUiChangeDetected: true }
+      })
+    ];
+
+    const narration = buildNarrationRecords(actions);
+    expect(narration.some((entry) => entry.kind === "hover")).toBe(true);
+  });
+
   it("marks likely synthetic clicks as system-initiated", () => {
     const actions: ActionRecord[] = [
       mkAction({
