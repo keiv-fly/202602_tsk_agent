@@ -275,7 +275,7 @@ export class ScriberRecorder {
       }
       const tasks = [...this.pendingTasks];
       if (tasks.length > 0) {
-        await Promise.all(tasks);
+        await Promise.allSettled(tasks);
       }
       if (!this.inputDebouncer.hasPending && this.pendingTasks.size === 0) {
         break;
@@ -781,9 +781,12 @@ export class ScriberRecorder {
   }
 
   private track(task: Promise<void>) {
-    this.pendingTasks.add(task);
-    task.finally(() => {
-      this.pendingTasks.delete(task);
+    const guardedTask = task.catch(() => {
+      // Background capture can fail during rapid shutdown; continue finalizing artifacts.
+    });
+    this.pendingTasks.add(guardedTask);
+    guardedTask.finally(() => {
+      this.pendingTasks.delete(guardedTask);
     });
   }
 }

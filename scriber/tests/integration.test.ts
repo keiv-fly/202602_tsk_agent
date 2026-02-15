@@ -71,6 +71,30 @@ describe("scriber integration", () => {
     expect(typeof meta.endTimestamp).toBe("string");
   });
 
+  it("finalizes artifacts after abrupt browser close during pending work", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.click("#toggle-btn");
+    await result.page.context().browser()?.close();
+    await expect(result.stop()).resolves.toBeUndefined();
+
+    const files = await readdir(outputDir);
+    expect(files).toContain("meta.json");
+    expect(files).toContain("actions.json");
+    expect(files).toContain("end.txt");
+    expect(files).toContain("narration.json");
+
+    const meta = JSON.parse(await readFile(resolve(outputDir, "meta.json"), "utf8")) as {
+      endTimestamp?: string;
+    };
+    expect(typeof meta.endTimestamp).toBe("string");
+  });
+
   it("captures before/after DOM snapshots around clicks", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({
