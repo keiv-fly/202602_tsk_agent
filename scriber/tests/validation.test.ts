@@ -13,7 +13,12 @@ describe("action schema validation", () => {
         url: "http://example.com",
         pageId: "p1",
         beforeScreenshotFileName: "000001_a1_before.png",
+        atScreenshotFileName: "000001_a1_at.png",
         afterScreenshotFileName: "000001_a1_after.png",
+        pageTitleBefore: "Before",
+        pageTitleAfter: "After",
+        urlBefore: "http://example.com",
+        urlAfter: "http://example.com",
         primarySelector: "#id",
         fallbackSelectors: []
       },
@@ -25,7 +30,12 @@ describe("action schema validation", () => {
         url: "http://example.com",
         pageId: "p1",
         beforeScreenshotFileName: "000002_a2_before.png",
+        atScreenshotFileName: "000002_a2_at.png",
         afterScreenshotFileName: "000002_a2_after.png",
+        pageTitleBefore: "Before",
+        pageTitleAfter: "After",
+        urlBefore: "http://example.com",
+        urlAfter: "http://example.com",
         primarySelector: "#id",
         fallbackSelectors: []
       }

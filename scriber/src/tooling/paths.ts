@@ -6,7 +6,7 @@ export const formatStepNumber = (stepNumber: number) =>
 export const snapshotFilename = (
   stepNumber: number,
   actionId: string,
-  phase: "before" | "after",
+  phase: "before" | "at" | "after",
   extension: string
 ) => `${formatStepNumber(stepNumber)}_${actionId}_${phase}.${extension}`;
 
@@ -15,6 +15,6 @@ export const snapshotPath = (
   directory: "screenshots" | "dom",
   stepNumber: number,
   actionId: string,
-  phase: "before" | "after",
+  phase: "before" | "at" | "after",
   extension: string
 ) => resolve(baseDir, directory, snapshotFilename(stepNumber, actionId, phase, extension));
