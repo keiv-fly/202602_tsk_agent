@@ -50,6 +50,7 @@ export interface TargetMetadata {
   id?: string;
   className?: string;
   name?: string;
+  accessibleName?: string;
   type?: string;
   value?: string;
   role?: string;

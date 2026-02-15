@@ -313,6 +313,48 @@ describe("scriber integration", () => {
       true
     );
   });
+
+  it("keeps hover actions when hover causes a DOM change", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/hover-dom-change`,
+      outputDir
+    });
+
+    await result.page.hover("#hover-menu");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const narration = JSON.parse(
+      await readFile(resolve(outputDir, "narration.json"), "utf8")
+    ) as Array<{ kind: string; evidence: { afterShot: string | null } }>;
+
+    const hoverNarration = narration.find((entry) => entry.kind === "hover");
+    expect(hoverNarration).toBeTruthy();
+    expect(typeof hoverNarration?.evidence.afterShot).toBe("string");
+  });
+
+  it("captures computed accessible names for robust targeting metadata", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/accessible-name`,
+      outputDir
+    });
+
+    await result.page.fill("#search-box", "boots");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const actions = await parseJsonl<{ actionType: string; target?: { accessibleName?: string } }>(
+      await readFile(resolve(outputDir, "actions.jsonl"), "utf8")
+    );
+
+    const fillAction = actions.find((action) => action.actionType === "fill");
+    expect(fillAction?.target?.accessibleName).toContain("Search Product");
+  });
+
   it("writes narration-ready output", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({

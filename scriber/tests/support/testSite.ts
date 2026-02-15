@@ -85,7 +85,22 @@ const routes: Record<string, string> = {
     <div id="long-hover">
       ${"x".repeat(1200)}
     </div>
-  `)
+  `),
+  "/hover-dom-change": htmlShell(`
+    <button id="hover-menu">Open menu</button>
+    <div id="menu" hidden>Menu item</div>
+    <script>
+      const trigger = document.getElementById('hover-menu');
+      const menu = document.getElementById('menu');
+      trigger.addEventListener('mouseover', () => {
+        menu.hidden = false;
+      });
+    </script>
+  `),
+  "/accessible-name": htmlShell(`
+    <label for="search-box">Search Products</label>
+    <input id="search-box" type="text" />
+  `),
 };
 
 export const startTestServer = async () => {
