@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -174,13 +174,9 @@ export const startTool = async (
     await context.close();
     if (pageVideo) {
       try {
-        const originalPath = await pageVideo.path();
-        finalizedVideoPath = originalPath ?? null;
         await pageVideo.saveAs(videoPath);
         finalizedVideoPath = videoPath;
-        if (originalPath && originalPath !== videoPath) {
-          await rm(originalPath, { force: true });
-        }
+        await pageVideo.delete();
       } catch {
         // No video frames (e.g. very short session) — skip save and cleanup
       }
