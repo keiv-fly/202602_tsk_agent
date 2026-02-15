@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import type { BrowserContext, Page } from "playwright";
 const require = createRequire(import.meta.url);
@@ -21,6 +21,7 @@ import {
   SnapshotDescriptor,
   TargetMetadata
 } from "./types.js";
+import { extractFramesFromVideo } from "./video.js";
 
 export interface RecorderSession {
   outputDir: string;
@@ -59,15 +60,16 @@ interface PreActionEvidence {
   capturedAt: number;
   target?: TargetMetadata;
   selector: string | null;
-  screenshotBuffer: Buffer;
   domGzip: Buffer;
   pageTitle: string | null;
   url: string;
 }
 
-interface RecordedAction {
+interface PendingVideoSnapshot {
   action: ActionRecord;
-  snapshots: SnapshotDescriptor[];
+  descriptor: SnapshotDescriptor;
+  screenshotPath: string;
+  capturedAt: number;
 }
 
 export class ScriberRecorder {
@@ -77,11 +79,13 @@ export class ScriberRecorder {
   private primaryPage: Page | null = null;
   private lastPageUrlById = new Map<string, string>();
   private stepNumber = 0;
-  private actions: RecordedAction[] = [];
+  private actions: ActionRecord[] = [];
   private inputDebouncer: InputDebouncer<PendingInput>;
   private closing = false;
+  private stopPrepared = false;
   private pendingTasks = new Set<Promise<void>>();
   private preActionEvidenceByPage = new Map<string, PreActionEvidence>();
+  private pendingVideoSnapshots: PendingVideoSnapshot[] = [];
 
   public readonly playwrightVersion = playwrightVersion;
 
@@ -122,14 +126,14 @@ export class ScriberRecorder {
               phase: "before"
             });
           }
-          await page.waitForTimeout(300);
+          await this.safeWaitForTimeout(page, 300);
           await this.safeCaptureSnapshot(page, action, {
             actionId: pending.actionId,
             stepNumber: pending.stepNumber,
             pageId: pending.pageId,
             phase: "at"
           });
-          await page.waitForTimeout(800);
+          await this.safeWaitForTimeout(page, 800);
           await this.waitForDomQuiet(pending.pageId);
           await this.safeCaptureSnapshot(page, action, {
             actionId: pending.actionId,
@@ -260,16 +264,41 @@ export class ScriberRecorder {
     this.lastPageUrlById.set(pageId, page.url());
   }
 
-  async stop({ endTimestamp }: { endTimestamp: string }) {
+  async prepareStop() {
     this.closing = true;
-    if (this.inputDebouncer.hasPending) {
-      await this.inputDebouncer.flush();
+    if (this.stopPrepared) {
+      return;
     }
-    await Promise.all(this.pendingTasks);
+    while (true) {
+      if (this.inputDebouncer.hasPending) {
+        await this.inputDebouncer.flush();
+      }
+      const tasks = [...this.pendingTasks];
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+      if (!this.inputDebouncer.hasPending && this.pendingTasks.size === 0) {
+        break;
+      }
+    }
+    this.stopPrepared = true;
+  }
+
+  async finalizeStop({
+    endTimestamp,
+    sessionStartTimestamp,
+    videoPath
+  }: {
+    endTimestamp: string;
+    sessionStartTimestamp: string;
+    videoPath: string | null;
+  }) {
+    await this.prepareStop();
+    await this.materializeVideoSnapshots(videoPath, sessionStartTimestamp);
     const actionsPath = resolve(this.options.outputDir, "actions.json");
     await writeFile(
       actionsPath,
-      JSON.stringify(this.actions.map((entry) => entry.action), null, 2),
+      JSON.stringify(this.actions, null, 2),
       "utf8"
     );
     await writeFile(
@@ -279,7 +308,7 @@ export class ScriberRecorder {
     );
     await writeFile(
       resolve(this.options.outputDir, "narration.json"),
-      JSON.stringify(buildNarrationRecords(this.actions.map((entry) => entry.action)), null, 2),
+      JSON.stringify(buildNarrationRecords(this.actions), null, 2),
       "utf8"
     );
   }
@@ -311,16 +340,10 @@ export class ScriberRecorder {
         });
         return `<!doctype html>${clone.outerHTML}`;
       });
-      const screenshotBuffer = await page.screenshot({
-        type: "png",
-        fullPage: true,
-        animations: "disabled"
-      });
       return {
         capturedAt: payload.timestamp,
         target: payload.target,
         selector: payload.selectors?.primarySelector ?? null,
-        screenshotBuffer,
         domGzip: await gzipHtml(html),
         pageTitle: await this.safeGetPageTitle(page),
         url: page.url()
@@ -361,20 +384,19 @@ export class ScriberRecorder {
       "before",
       "html.gz"
     );
-    const screenshotPath = snapshotPath(
-      this.options.outputDir,
-      "screenshots",
-      action.stepNumber,
-      action.actionId,
-      "before",
-      "png"
-    );
-
     await writeFile(domPath, evidence.domGzip);
-    await writeFile(screenshotPath, evidence.screenshotBuffer);
-    action.beforeScreenshotFileName = screenshotPath.split("/").pop() ?? null;
     action.urlBefore = evidence.url;
     action.pageTitleBefore = evidence.pageTitle;
+    this.registerSnapshotForVideo(
+      action,
+      {
+        actionId: action.actionId,
+        stepNumber: action.stepNumber,
+        pageId,
+        phase: "before"
+      },
+      evidence.capturedAt
+    );
     this.preActionEvidenceByPage.delete(pageId);
     return true;
   }
@@ -511,7 +533,7 @@ export class ScriberRecorder {
           phase: "before"
         });
       }
-      await page.waitForTimeout(300);
+      await this.safeWaitForTimeout(page, 300);
       await this.safeCaptureSnapshot(page, action, {
         actionId,
         stepNumber,
@@ -521,7 +543,7 @@ export class ScriberRecorder {
     }
 
     if (shouldCapture) {
-      await page.waitForTimeout(800);
+      await this.safeWaitForTimeout(page, 800);
       await this.waitForDomQuiet(pageId);
       await this.safeCaptureSnapshot(page, action, {
         actionId,
@@ -557,39 +579,108 @@ export class ScriberRecorder {
     }
   }
 
+  private async safeWaitForTimeout(page: Page, timeoutMs: number) {
+    try {
+      await page.waitForTimeout(timeoutMs);
+    } catch {
+      // Ignore wait errors when page/context closes during shutdown.
+    }
+  }
+
   private async safeCaptureSnapshot(
     page: Page,
     action: ActionRecord,
     descriptor: SnapshotDescriptor
   ) {
     try {
+      const capturedAt = Date.now();
       await this.captureSnapshot(page, descriptor);
-      const fileName = snapshotPath(
-        this.options.outputDir,
-        "screenshots",
-        descriptor.stepNumber,
-        descriptor.actionId,
-        descriptor.phase,
-        "png"
-      ).split("/").pop() ?? null;
-      if (descriptor.phase === "before") {
-        action.beforeScreenshotFileName = fileName;
-      }
-      if (descriptor.phase === "at") {
-        action.atScreenshotFileName = fileName;
-      }
-      if (descriptor.phase === "after") {
-        action.afterScreenshotFileName = fileName;
-      }
+      this.registerSnapshotForVideo(action, descriptor, capturedAt);
     } catch {
       // Ignore snapshot errors (e.g., page closed).
     }
   }
 
+  private setScreenshotFileName(
+    action: ActionRecord,
+    phase: SnapshotDescriptor["phase"],
+    fileName: string | null
+  ) {
+    if (phase === "before") {
+      action.beforeScreenshotFileName = fileName;
+      return;
+    }
+    if (phase === "at") {
+      action.atScreenshotFileName = fileName;
+      return;
+    }
+    action.afterScreenshotFileName = fileName;
+  }
+
+  private registerSnapshotForVideo(
+    action: ActionRecord,
+    descriptor: SnapshotDescriptor,
+    capturedAt: number
+  ) {
+    const screenshotPath = snapshotPath(
+      this.options.outputDir,
+      "screenshots",
+      descriptor.stepNumber,
+      descriptor.actionId,
+      descriptor.phase,
+      "png"
+    );
+    this.setScreenshotFileName(action, descriptor.phase, basename(screenshotPath));
+    this.pendingVideoSnapshots.push({
+      action,
+      descriptor,
+      screenshotPath,
+      capturedAt
+    });
+  }
+
+  private async materializeVideoSnapshots(
+    videoPath: string | null,
+    sessionStartTimestamp: string
+  ) {
+    if (this.pendingVideoSnapshots.length === 0) {
+      return;
+    }
+    if (!videoPath) {
+      for (const snapshot of this.pendingVideoSnapshots) {
+        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
+      }
+      return;
+    }
+    const sessionStartMs = new Date(sessionStartTimestamp).getTime();
+    if (!Number.isFinite(sessionStartMs)) {
+      for (const snapshot of this.pendingVideoSnapshots) {
+        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
+      }
+      return;
+    }
+
+    const snapshots = [...this.pendingVideoSnapshots].sort(
+      (left, right) => left.capturedAt - right.capturedAt
+    );
+    const outcomes = await extractFramesFromVideo(
+      videoPath,
+      snapshots.map((snapshot) => ({
+        outputPath: snapshot.screenshotPath,
+        offsetMs: Math.max(0, snapshot.capturedAt - sessionStartMs)
+      }))
+    );
+    snapshots.forEach((snapshot, index) => {
+      if (!outcomes[index]) {
+        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
+      }
+    });
+  }
+
   private async writeAction(action: ActionRecord) {
     const actionsPath = resolve(this.options.outputDir, "actions.jsonl");
     await appendJsonl(actionsPath, action);
-    this.actions.push({ action, snapshots: [] });
+    this.actions.push(action);
   }
 
   private async waitForDomQuiet(pageId: string) {
@@ -649,14 +740,6 @@ export class ScriberRecorder {
       descriptor.phase,
       "html.gz"
     );
-    const screenshotPath = snapshotPath(
-      this.options.outputDir,
-      "screenshots",
-      descriptor.stepNumber,
-      descriptor.actionId,
-      descriptor.phase,
-      "png"
-    );
 
     const html = await page.evaluate(() => {
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
@@ -675,7 +758,6 @@ export class ScriberRecorder {
 
     const gzipBuffer = await gzipHtml(html);
     await writeFile(domPath, gzipBuffer);
-    await page.screenshot({ path: screenshotPath, type: "png" });
   }
 
   private nextStepNumber() {

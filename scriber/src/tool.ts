@@ -169,18 +169,15 @@ export const startTool = async (
 
   const stop = async () => {
     const endTimestamp = new Date().toISOString();
-    await recorder.stop({ endTimestamp });
-    const finalMeta: SessionMeta = { ...meta, endTimestamp };
-    await writeFile(
-      resolve(outputDir, "meta.json"),
-      JSON.stringify(finalMeta, null, 2),
-      "utf8"
-    );
+    await recorder.prepareStop();
+    let finalizedVideoPath: string | null = null;
     await context.close();
     if (pageVideo) {
       try {
         const originalPath = await pageVideo.path();
+        finalizedVideoPath = originalPath ?? null;
         await pageVideo.saveAs(videoPath);
+        finalizedVideoPath = videoPath;
         if (originalPath && originalPath !== videoPath) {
           await rm(originalPath, { force: true });
         }
@@ -188,6 +185,17 @@ export const startTool = async (
         // No video frames (e.g. very short session) — skip save and cleanup
       }
     }
+    await recorder.finalizeStop({
+      endTimestamp,
+      sessionStartTimestamp: startTimestamp,
+      videoPath: finalizedVideoPath
+    });
+    const finalMeta: SessionMeta = { ...meta, endTimestamp };
+    await writeFile(
+      resolve(outputDir, "meta.json"),
+      JSON.stringify(finalMeta, null, 2),
+      "utf8"
+    );
     await browser.close();
   };
 

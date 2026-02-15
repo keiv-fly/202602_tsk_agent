@@ -15,6 +15,7 @@
     "postinstall": "npx playwright install --with-deps"
   },
   "dependencies": {
+    "ffmpeg-static": "^5.3.0",
     "playwright": "^1.50.0"
   },
   "devDependencies": {
