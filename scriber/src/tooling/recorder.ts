@@ -678,9 +678,11 @@ export class ScriberRecorder {
   }
 
   private async writeAction(action: ActionRecord) {
-    const actionsPath = resolve(this.options.outputDir, "actions.jsonl");
-    await appendJsonl(actionsPath, action);
+    const jsonlPath = resolve(this.options.outputDir, "actions.jsonl");
+    const jsonPath = resolve(this.options.outputDir, "actions.json");
+    await appendJsonl(jsonlPath, action);
     this.actions.push(action);
+    await writeFile(jsonPath, JSON.stringify(this.actions, null, 2), "utf8");
   }
 
   private async waitForDomQuiet(pageId: string) {
