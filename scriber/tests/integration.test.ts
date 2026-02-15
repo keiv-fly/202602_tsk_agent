@@ -40,8 +40,9 @@ describe("scriber integration", () => {
     expect(files).toContain("meta.json");
     expect(files).toContain("actions.jsonl");
     expect(files).toContain("video.webm");
-    expect(files).not.toContain("screenshots");
+    expect(files).toContain("screenshots");
     expect(files).toContain("dom");
+    expect(files).toContain("narration.json");
   });
 
   it("captures before/after DOM snapshots around clicks", async () => {
@@ -61,6 +62,7 @@ describe("scriber integration", () => {
       actionId: string;
       stepNumber: number;
       beforeScreenshotFileName: string | null;
+      atScreenshotFileName: string | null;
       afterScreenshotFileName: string | null;
     }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
     const clickAction = actions.find((action) => action.actionType === "click");
@@ -68,8 +70,9 @@ describe("scriber integration", () => {
     if (!clickAction) {
       return;
     }
-    expect(clickAction.beforeScreenshotFileName).toBeNull();
-    expect(clickAction.afterScreenshotFileName).toBeNull();
+    expect(clickAction.beforeScreenshotFileName).toMatch(/_before\.png$/);
+    expect(clickAction.atScreenshotFileName).toMatch(/_at\.png$/);
+    expect(clickAction.afterScreenshotFileName).toMatch(/_after\.png$/);
 
     const beforeDomPath = snapshotPath(
       outputDir,
@@ -98,13 +101,15 @@ describe("scriber integration", () => {
     ) as Array<{
       actionType: string;
       beforeScreenshotFileName: string | null;
+      atScreenshotFileName: string | null;
       afterScreenshotFileName: string | null;
     }>;
     const consolidatedClickAction = consolidatedActions.find(
       (action) => action.actionType === "click"
     );
-    expect(consolidatedClickAction?.beforeScreenshotFileName).toBeNull();
-    expect(consolidatedClickAction?.afterScreenshotFileName).toBeNull();
+    expect(consolidatedClickAction?.beforeScreenshotFileName).toMatch(/_before\.png$/);
+    expect(consolidatedClickAction?.atScreenshotFileName).toMatch(/_at\.png$/);
+    expect(consolidatedClickAction?.afterScreenshotFileName).toMatch(/_after\.png$/);
   });
 
   it("waits for settled DOM mutations before after snapshots", async () => {
@@ -277,18 +282,14 @@ describe("scriber integration", () => {
       target?: { type?: string; value?: string };
     }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
 
-    const textAction = actions.find(
-      (action) => action.actionType === "fill" && action.target?.type === "text"
-    );
-    const passwordAction = actions.find(
-      (action) => action.actionType === "fill" && action.target?.type === "password"
-    );
+    const fillActions = actions.filter((action) => action.actionType === "fill");
+    const textAction = fillActions.find((action) => action.target?.type === "text");
 
     expect(textAction?.target?.value).toBe("Alice");
-    expect(passwordAction?.target?.value).toBe("********");
+    expect(fillActions.some((action) => action.target?.value === "secret")).toBe(false);
   });
 
-  it("truncates hover text and fallback selectors to 1000 characters", async () => {
+  it("trims hover text for narration-friendly payloads", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({
       headless: true,
@@ -307,9 +308,29 @@ describe("scriber integration", () => {
     }>(await readFile(resolve(outputDir, "actions.jsonl"), "utf8"));
     const hoverAction = actions.find((action) => action.actionType === "hover");
     expect(hoverAction).toBeTruthy();
-    expect(hoverAction?.target?.text?.length).toBe(1000);
+    expect(hoverAction?.target?.text?.length).toBeLessThanOrEqual(120);
     expect(hoverAction?.fallbackSelectors?.every((selector) => selector.length <= 1000)).toBe(
       true
     );
   });
+  it("writes narration-ready output", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.click("#toggle-btn");
+    await waitForArtifacts(result.page);
+    await result.stop();
+
+    const narration = JSON.parse(
+      await readFile(resolve(outputDir, "narration.json"), "utf8")
+    ) as Array<{ kind: string }>;
+
+    expect(Array.isArray(narration)).toBe(true);
+    expect(narration.length).toBeGreaterThan(0);
+  });
+
 });

@@ -66,7 +66,12 @@ export interface ActionRecord extends SelectorInfo {
   url: string;
   pageId: string;
   beforeScreenshotFileName: string | null;
+  atScreenshotFileName: string | null;
   afterScreenshotFileName: string | null;
+  pageTitleBefore: string | null;
+  pageTitleAfter: string | null;
+  urlBefore: string | null;
+  urlAfter: string | null;
   target?: TargetMetadata;
   details?: Record<string, unknown>;
 }
@@ -75,7 +80,35 @@ export interface SnapshotDescriptor {
   actionId: string;
   stepNumber: number;
   pageId: string;
-  phase: "before" | "after";
+  phase: "before" | "at" | "after";
+}
+
+export interface NarrationRecord {
+  stepNumber: number;
+  t: string;
+  kind: ActionType;
+  url: string;
+  pageId: string;
+  navigationGroup: number;
+  target?: {
+    role?: string;
+    name?: string;
+    selector?: string | null;
+    visibleText?: string;
+  };
+  evidence: {
+    beforeShot: string | null;
+    atShot: string | null;
+    afterShot: string | null;
+    titleBefore: string | null;
+    titleAfter: string | null;
+    urlBefore: string | null;
+    urlAfter: string | null;
+  };
+  notes: {
+    isUserInitiated: boolean;
+    syntheticReason?: string;
+  };
 }
 
 export interface SessionMeta {

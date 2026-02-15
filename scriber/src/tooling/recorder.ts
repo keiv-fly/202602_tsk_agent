@@ -12,6 +12,7 @@ const { version: playwrightVersion } = require("playwright/package.json") as {
 import { InputDebouncer } from "./debounce.js";
 import { gzipHtml } from "./dom.js";
 import { appendJsonl } from "./jsonl.js";
+import { buildNarrationRecords } from "./narration.js";
 import { snapshotPath } from "./paths.js";
 import { RedactionRule, redactValue } from "./redaction.js";
 import {
@@ -70,20 +71,10 @@ export class ScriberRecorder {
   constructor(options: RecorderOptions) {
     this.options = options;
     this.inputDebouncer = new InputDebouncer(options.debounceMs, {
-      onStart: async (pending) => {
-        const page = this.getPageById(pending.pageId);
-        if (!page) {
-          return;
-        }
-        await this.safeCaptureSnapshot(page, {
-          actionId: pending.actionId,
-          stepNumber: pending.stepNumber,
-          pageId: pending.pageId,
-          phase: "before"
-        });
-      },
+      onStart: async () => undefined,
       onFlush: async (pending) => {
-        await this.writeAction({
+        const page = this.getPageById(pending.pageId);
+        const action: ActionRecord = {
           actionId: pending.actionId,
           stepNumber: pending.stepNumber,
           timestamp: pending.timestamp,
@@ -91,12 +82,44 @@ export class ScriberRecorder {
           url: pending.url,
           pageId: pending.pageId,
           beforeScreenshotFileName: null,
+          atScreenshotFileName: null,
           afterScreenshotFileName: null,
+          pageTitleBefore: null,
+          pageTitleAfter: null,
+          urlBefore: null,
+          urlAfter: null,
           target: pending.target,
           primarySelector: pending.selectors.primarySelector,
           fallbackSelectors: pending.selectors.fallbackSelectors,
           details: pending.details
-        });
+        };
+        if (page && this.shouldCaptureEvidence("fill")) {
+          action.urlBefore = page.url();
+          action.pageTitleBefore = await this.safeGetPageTitle(page);
+          await this.safeCaptureSnapshot(page, action, {
+            actionId: pending.actionId,
+            stepNumber: pending.stepNumber,
+            pageId: pending.pageId,
+            phase: "before"
+          });
+          await this.safeCaptureSnapshot(page, action, {
+            actionId: pending.actionId,
+            stepNumber: pending.stepNumber,
+            pageId: pending.pageId,
+            phase: "at"
+          });
+          await page.waitForTimeout(800);
+          await this.waitForDomQuiet(pending.pageId);
+          await this.safeCaptureSnapshot(page, action, {
+            actionId: pending.actionId,
+            stepNumber: pending.stepNumber,
+            pageId: pending.pageId,
+            phase: "after"
+          });
+          action.urlAfter = page.url();
+          action.pageTitleAfter = await this.safeGetPageTitle(page);
+        }
+        await this.writeAction(action);
       }
     });
   }
@@ -115,6 +138,7 @@ export class ScriberRecorder {
 
   private async ensureDirectories() {
     await mkdir(resolve(this.options.outputDir, "dom"), { recursive: true });
+    await mkdir(resolve(this.options.outputDir, "screenshots"), { recursive: true });
   }
 
   private async registerPage(page: Page) {
@@ -225,6 +249,11 @@ export class ScriberRecorder {
       endTimestamp,
       "utf8"
     );
+    await writeFile(
+      resolve(this.options.outputDir, "narration.json"),
+      JSON.stringify(buildNarrationRecords(this.actions.map((entry) => entry.action)), null, 2),
+      "utf8"
+    );
   }
 
   private async handlePayload(
@@ -241,6 +270,9 @@ export class ScriberRecorder {
       fallbackSelectors: []
     };
     const target = payload.target;
+    if (target?.text) {
+      target.text = target.text.slice(0, 120);
+    }
     const actionType = payload.actionType;
     const details = payload.details;
 
@@ -327,40 +359,96 @@ export class ScriberRecorder {
       url: payload.url,
       pageId,
       beforeScreenshotFileName: null,
+      atScreenshotFileName: null,
       afterScreenshotFileName: null,
+      pageTitleBefore: null,
+      pageTitleAfter: null,
+      urlBefore: null,
+      urlAfter: null,
       target: payload.target,
       primarySelector: payload.selectors.primarySelector,
       fallbackSelectors: payload.selectors.fallbackSelectors,
       details: payload.details
     };
 
-    if (payload.actionType === "click") {
-      await this.safeCaptureSnapshot(page, {
+    if (this.shouldCaptureEvidence(payload.actionType)) {
+      action.urlBefore = page.url();
+      action.pageTitleBefore = await this.safeGetPageTitle(page);
+      await this.safeCaptureSnapshot(page, action, {
         actionId,
         stepNumber,
         pageId,
         phase: "before"
       });
+      await this.safeCaptureSnapshot(page, action, {
+        actionId,
+        stepNumber,
+        pageId,
+        phase: "at"
+      });
     }
 
-    await this.writeAction(action);
-    if (payload.actionType === "click") {
+    if (this.shouldCaptureEvidence(payload.actionType)) {
+      await page.waitForTimeout(800);
       await this.waitForDomQuiet(pageId);
-      await this.safeCaptureSnapshot(page, {
+      await this.safeCaptureSnapshot(page, action, {
         actionId,
         stepNumber,
         pageId,
         phase: "after"
       });
+      action.urlAfter = page.url();
+      action.pageTitleAfter = await this.safeGetPageTitle(page);
+    }
+    await this.writeAction(action);
+  }
+
+  private shouldCaptureEvidence(actionType: ActionType) {
+    return [
+      "click",
+      "fill",
+      "press",
+      "select",
+      "navigation",
+      "goto",
+      "dialog",
+      "set_input_files",
+      "check"
+    ].includes(actionType);
+  }
+
+  private async safeGetPageTitle(page: Page) {
+    try {
+      return await page.title();
+    } catch {
+      return null;
     }
   }
 
   private async safeCaptureSnapshot(
     page: Page,
+    action: ActionRecord,
     descriptor: SnapshotDescriptor
   ) {
     try {
       await this.captureSnapshot(page, descriptor);
+      const fileName = snapshotPath(
+        this.options.outputDir,
+        "screenshots",
+        descriptor.stepNumber,
+        descriptor.actionId,
+        descriptor.phase,
+        "png"
+      ).split("/").pop() ?? null;
+      if (descriptor.phase === "before") {
+        action.beforeScreenshotFileName = fileName;
+      }
+      if (descriptor.phase === "at") {
+        action.atScreenshotFileName = fileName;
+      }
+      if (descriptor.phase === "after") {
+        action.afterScreenshotFileName = fileName;
+      }
     } catch {
       // Ignore snapshot errors (e.g., page closed).
     }
@@ -429,6 +517,14 @@ export class ScriberRecorder {
       descriptor.phase,
       "html.gz"
     );
+    const screenshotPath = snapshotPath(
+      this.options.outputDir,
+      "screenshots",
+      descriptor.stepNumber,
+      descriptor.actionId,
+      descriptor.phase,
+      "png"
+    );
 
     const html = await page.evaluate(() => {
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
@@ -447,6 +543,7 @@ export class ScriberRecorder {
 
     const gzipBuffer = await gzipHtml(html);
     await writeFile(domPath, gzipBuffer);
+    await page.screenshot({ path: screenshotPath, type: "png" });
   }
 
   private nextStepNumber() {
