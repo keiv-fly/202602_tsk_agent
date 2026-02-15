@@ -38,6 +38,7 @@ describe("scriber integration", () => {
 
     const files = await readdir(outputDir);
     expect(files).toContain("meta.json");
+    expect(files).toContain("actions.json");
     expect(files).toContain("actions.jsonl");
     expect(files).toContain("video.webm");
     expect(files).toContain("screenshots");
