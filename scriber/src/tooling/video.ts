@@ -35,10 +35,13 @@ export const extractFramesFromVideo = async (
         "-hide_banner",
         "-loglevel",
         "error",
-        "-ss",
-        offset,
         "-i",
         videoPath,
+        // Use accurate seek for frame extraction so UI states
+        // right around fast interactions (e.g., modal dismiss)
+        // map to the expected before/at/after screenshots.
+        "-ss",
+        offset,
         "-frames:v",
         "1",
         "-y",

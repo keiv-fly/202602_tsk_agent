@@ -66,6 +66,8 @@ export interface ActionRecord extends SelectorInfo {
   actionType: ActionType;
   url: string;
   pageId: string;
+  videoFrame: number;
+  videoFrameMod65536: number;
   beforeScreenshotFileName: string | null;
   atScreenshotFileName: string | null;
   afterScreenshotFileName: string | null;
@@ -73,8 +75,22 @@ export interface ActionRecord extends SelectorInfo {
   pageTitleAfter: string | null;
   urlBefore: string | null;
   urlAfter: string | null;
+  overlayOcr?: {
+    before?: OverlayOcrSnapshot;
+    at?: OverlayOcrSnapshot;
+    after?: OverlayOcrSnapshot;
+  };
   target?: TargetMetadata;
   details?: Record<string, unknown>;
+}
+
+export interface OverlayOcrSnapshot {
+  value: number | null;
+  text: string | null;
+  confidence: number | null;
+  expectedVideoFrameMod65536: number;
+  matchesExpected: boolean | null;
+  error: string | null;
 }
 
 export interface SnapshotDescriptor {

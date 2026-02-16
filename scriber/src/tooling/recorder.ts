@@ -18,9 +18,14 @@ import { RedactionRule, redactValue } from "./redaction.js";
 import {
   ActionRecord,
   ActionType,
+  OverlayOcrSnapshot,
   SnapshotDescriptor,
   TargetMetadata
 } from "./types.js";
+import {
+  createOverlayOcrWorker,
+  readOverlayNumberFromScreenshot
+} from "./overlayOcr.js";
 import { extractFramesFromVideo } from "./video.js";
 
 export interface RecorderSession {
@@ -33,6 +38,7 @@ export interface RecorderSession {
 interface RecorderOptions {
   sessionId: string;
   outputDir: string;
+  sessionStartTimestamp: string;
   debounceMs: number;
   quietWindowMs: number;
   quietTimeoutMs: number;
@@ -72,8 +78,12 @@ interface PendingVideoSnapshot {
   capturedAt: number;
 }
 
+const VIDEO_FRAME_RATE = 30;
+const VIDEO_FRAME_MODULUS = 65536;
+
 export class ScriberRecorder {
   private options: RecorderOptions;
+  private sessionStartMs: number;
   private context: BrowserContext | null = null;
   private pageIds = new Map<Page, string>();
   private primaryPage: Page | null = null;
@@ -91,10 +101,13 @@ export class ScriberRecorder {
 
   constructor(options: RecorderOptions) {
     this.options = options;
+    const parsedStartMs = new Date(options.sessionStartTimestamp).getTime();
+    this.sessionStartMs = Number.isFinite(parsedStartMs) ? parsedStartMs : Date.now();
     this.inputDebouncer = new InputDebouncer(options.debounceMs, {
       onStart: async () => undefined,
       onFlush: async (pending) => {
         const page = this.getPageById(pending.pageId);
+        const frameInfo = this.buildVideoFrameInfo(pending.timestamp);
         const action: ActionRecord = {
           actionId: pending.actionId,
           stepNumber: pending.stepNumber,
@@ -102,6 +115,8 @@ export class ScriberRecorder {
           actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
+          videoFrame: frameInfo.videoFrame,
+          videoFrameMod65536: frameInfo.videoFrameMod65536,
           beforeScreenshotFileName: null,
           atScreenshotFileName: null,
           afterScreenshotFileName: null,
@@ -152,7 +167,9 @@ export class ScriberRecorder {
   async attach(context: BrowserContext) {
     this.context = context;
     await this.ensureDirectories();
-    await context.addInitScript({ content: createInitScript() });
+    await context.addInitScript({
+      content: createInitScript(this.sessionStartMs, VIDEO_FRAME_RATE, VIDEO_FRAME_MODULUS)
+    });
     context.on("page", (page) => {
       void this.registerPage(page);
     });
@@ -496,14 +513,18 @@ export class ScriberRecorder {
     const actionId = randomUUID();
     const stepNumber = this.nextStepNumber();
     const pageId = this.getPageId(page);
+    const timestamp = new Date().toISOString();
+    const frameInfo = this.buildVideoFrameInfo(timestamp);
 
     const action: ActionRecord = {
       actionId,
       stepNumber,
-      timestamp: new Date().toISOString(),
+      timestamp,
       actionType: payload.actionType,
       url: payload.url,
       pageId,
+      videoFrame: frameInfo.videoFrame,
+      videoFrameMod65536: frameInfo.videoFrameMod65536,
       beforeScreenshotFileName: null,
       atScreenshotFileName: null,
       afterScreenshotFileName: null,
@@ -617,6 +638,17 @@ export class ScriberRecorder {
     action.afterScreenshotFileName = fileName;
   }
 
+  private setOverlayOcrSnapshot(
+    action: ActionRecord,
+    phase: SnapshotDescriptor["phase"],
+    overlayOcr: OverlayOcrSnapshot
+  ) {
+    if (!action.overlayOcr) {
+      action.overlayOcr = {};
+    }
+    action.overlayOcr[phase] = overlayOcr;
+  }
+
   private registerSnapshotForVideo(
     action: ActionRecord,
     descriptor: SnapshotDescriptor,
@@ -670,11 +702,58 @@ export class ScriberRecorder {
         offsetMs: Math.max(0, snapshot.capturedAt - sessionStartMs)
       }))
     );
-    snapshots.forEach((snapshot, index) => {
+    let ocrWorker: Awaited<ReturnType<typeof createOverlayOcrWorker>> | null = null;
+    let ocrWorkerError: string | null = null;
+    for (const [index, snapshot] of snapshots.entries()) {
       if (!outcomes[index]) {
         this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
+        continue;
       }
-    });
+      const expectedFrameInfo = this.buildVideoFrameInfoFromMs(
+        snapshot.capturedAt,
+        sessionStartMs
+      );
+      if (!ocrWorker && !ocrWorkerError) {
+        try {
+          ocrWorker = await createOverlayOcrWorker();
+        } catch (error) {
+          ocrWorkerError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      if (!ocrWorker) {
+        this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
+          value: null,
+          text: null,
+          confidence: null,
+          expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
+          matchesExpected: null,
+          error: ocrWorkerError ?? "OCR worker unavailable"
+        });
+        continue;
+      }
+      const ocrResult = await readOverlayNumberFromScreenshot(
+        ocrWorker,
+        snapshot.screenshotPath
+      );
+      this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
+        value: ocrResult.value,
+        text: ocrResult.text,
+        confidence: ocrResult.confidence,
+        expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
+        matchesExpected:
+          ocrResult.value === null
+            ? null
+            : ocrResult.value === expectedFrameInfo.videoFrameMod65536,
+        error: ocrResult.error
+      });
+    }
+    if (ocrWorker) {
+      try {
+        await ocrWorker.terminate();
+      } catch {
+        // Ignore OCR worker shutdown errors.
+      }
+    }
   }
 
   private async writeAction(action: ActionRecord) {
@@ -767,6 +846,23 @@ export class ScriberRecorder {
     return this.stepNumber;
   }
 
+  private buildVideoFrameInfo(timestamp: string) {
+    const actionTimeMs = new Date(timestamp).getTime();
+    return this.buildVideoFrameInfoFromMs(actionTimeMs, this.sessionStartMs);
+  }
+
+  private buildVideoFrameInfoFromMs(actionTimeMs: number, sessionStartMs: number) {
+    if (!Number.isFinite(actionTimeMs) || !Number.isFinite(sessionStartMs)) {
+      return { videoFrame: 0, videoFrameMod65536: 0 };
+    }
+    const elapsedMs = Math.max(0, actionTimeMs - sessionStartMs);
+    const videoFrame = Math.floor((elapsedMs * VIDEO_FRAME_RATE) / 1000);
+    return {
+      videoFrame,
+      videoFrameMod65536: videoFrame % VIDEO_FRAME_MODULUS
+    };
+  }
+
   private getPageId(page: Page) {
     return this.pageIds.get(page) ?? "unknown";
   }
@@ -799,8 +895,16 @@ interface RecorderPayload {
   details?: Record<string, unknown>;
 }
 
-const createInitScript = () => `
+const createInitScript = (
+  sessionStartMs: number,
+  frameRate: number,
+  frameModulus: number
+) => `
 (() => {
+  const SCRIBER_SESSION_START_MS = ${sessionStartMs};
+  const SCRIBER_VIDEO_FRAME_RATE = ${frameRate};
+  const SCRIBER_VIDEO_FRAME_MODULUS = ${frameModulus};
+
   const buildCssPath = (element) => {
     if (!(element instanceof Element)) return null;
     const path = [];
@@ -904,6 +1008,71 @@ const createInitScript = () => `
   };
 
   const normalizeName = (value) => value?.replace(/\s+/g, ' ').trim();
+
+  const getVideoFrame = (timestampMs) => {
+    if (!Number.isFinite(timestampMs)) {
+      return 0;
+    }
+    const elapsedMs = Math.max(0, timestampMs - SCRIBER_SESSION_START_MS);
+    return Math.floor((elapsedMs * SCRIBER_VIDEO_FRAME_RATE) / 1000);
+  };
+
+  let frameOverlay = null;
+  const ensureFrameOverlay = () => {
+    if (frameOverlay instanceof HTMLElement && frameOverlay.isConnected) {
+      return frameOverlay;
+    }
+    const existing = document.getElementById('__scriberFrameOverlay');
+    if (existing instanceof HTMLElement) {
+      frameOverlay = existing;
+      return frameOverlay;
+    }
+    const root = document.documentElement || document.body;
+    if (!root) {
+      return null;
+    }
+    frameOverlay = document.createElement('div');
+    frameOverlay.id = '__scriberFrameOverlay';
+    frameOverlay.setAttribute('aria-hidden', 'true');
+    frameOverlay.style.display = 'inline-block';
+    frameOverlay.style.position = 'fixed';
+    frameOverlay.style.top = '6px';
+    frameOverlay.style.left = '6px';
+    frameOverlay.style.width = '5ch';
+    frameOverlay.style.padding = '0 2px';
+    frameOverlay.style.textAlign = 'right';
+    frameOverlay.style.border = '2px solid #ff0';
+    frameOverlay.style.borderRadius = '0';
+    frameOverlay.style.background = '#000';
+    frameOverlay.style.color = '#fff';
+    frameOverlay.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    frameOverlay.style.fontSize = '12px';
+    frameOverlay.style.lineHeight = '1';
+    frameOverlay.style.fontVariantNumeric = 'tabular-nums';
+    frameOverlay.style.pointerEvents = 'none';
+    frameOverlay.style.userSelect = 'none';
+    frameOverlay.style.zIndex = '2147483647';
+    root.appendChild(frameOverlay);
+    return frameOverlay;
+  };
+
+  const updateFrameOverlay = () => {
+    const overlay = ensureFrameOverlay();
+    if (!overlay) {
+      return;
+    }
+    const frame = getVideoFrame(Date.now());
+    overlay.textContent = String(frame % SCRIBER_VIDEO_FRAME_MODULUS);
+  };
+
+  const startFrameOverlayLoop = () => {
+    const tick = () => {
+      updateFrameOverlay();
+      window.requestAnimationFrame(tick);
+    };
+    tick();
+  };
+  startFrameOverlayLoop();
 
   const buildSelectors = (target) => {
     if (!(target instanceof Element)) {

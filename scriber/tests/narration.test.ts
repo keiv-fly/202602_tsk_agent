@@ -10,6 +10,8 @@ const mkAction = (overrides: Partial<ActionRecord>): ActionRecord => ({
   actionType: "click",
   url: "https://example.com",
   pageId: "p1",
+  videoFrame: 0,
+  videoFrameMod65536: 0,
   beforeScreenshotFileName: null,
   atScreenshotFileName: null,
   afterScreenshotFileName: null,

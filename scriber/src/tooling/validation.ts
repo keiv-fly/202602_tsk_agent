@@ -1,6 +1,7 @@
 import { ActionRecord } from "./types.js";
 
 export const validateActionSchema = (actions: ActionRecord[]) => {
+  const VIDEO_FRAME_MODULUS = 65536;
   if (actions.length === 0) {
     return { valid: true, errors: [] as string[] };
   }
@@ -18,6 +19,23 @@ export const validateActionSchema = (actions: ActionRecord[]) => {
     }
     if (!action.timestamp) {
       errors.push(`Missing timestamp at index ${index}`);
+    }
+    if (!Number.isInteger(action.videoFrame) || action.videoFrame < 0) {
+      errors.push(`Invalid videoFrame at index ${index}`);
+    }
+    if (
+      !Number.isInteger(action.videoFrameMod65536) ||
+      action.videoFrameMod65536 < 0 ||
+      action.videoFrameMod65536 >= VIDEO_FRAME_MODULUS
+    ) {
+      errors.push(`Invalid videoFrameMod65536 at index ${index}`);
+    }
+    if (
+      Number.isInteger(action.videoFrame) &&
+      Number.isInteger(action.videoFrameMod65536) &&
+      action.videoFrame % VIDEO_FRAME_MODULUS !== action.videoFrameMod65536
+    ) {
+      errors.push(`videoFrameMod65536 mismatch at index ${index}`);
     }
     if (action.stepNumber <= lastStep) {
       errors.push(`Step number not monotonic at index ${index}`);

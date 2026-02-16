@@ -46,6 +46,46 @@ describe("scriber integration", () => {
     expect(files).toContain("narration.json");
   });
 
+  it("renders a top-left frame modulo overlay for the session", async () => {
+    const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
+    const result = await startTool({
+      headless: true,
+      startUrl: `${server.baseUrl}/basic-click`,
+      outputDir
+    });
+
+    await result.page.waitForTimeout(150);
+    const overlay = await result.page.evaluate(() => {
+      const element = document.getElementById("__scriberFrameOverlay");
+      if (!(element instanceof HTMLElement)) {
+        return null;
+      }
+      return {
+        text: element.textContent ?? "",
+        position: element.style.position,
+        top: element.style.top,
+        left: element.style.left,
+        width: element.style.width,
+        textAlign: element.style.textAlign,
+        border: element.style.border,
+        borderRadius: element.style.borderRadius,
+        background: element.style.background
+      };
+    });
+
+    expect(overlay).toBeTruthy();
+    expect(overlay?.text).toMatch(/^\d{1,5}$/);
+    expect(overlay?.position).toBe("fixed");
+    expect(overlay?.top).toBe("6px");
+    expect(overlay?.left).toBe("6px");
+    expect(overlay?.width).toBe("5ch");
+    expect(overlay?.textAlign).toBe("right");
+    expect(overlay?.border).toBe("2px solid rgb(255, 255, 0)");
+    expect(overlay?.borderRadius).toBe("0px");
+    expect(overlay?.background).toBe("rgb(0, 0, 0)");
+    await result.stop();
+  });
+
   it("finalizes artifacts when context is already closed before stop", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({
@@ -111,6 +151,8 @@ describe("scriber integration", () => {
       actionType: string;
       actionId: string;
       stepNumber: number;
+      videoFrame: number;
+      videoFrameMod65536: number;
       beforeScreenshotFileName: string | null;
       atScreenshotFileName: string | null;
       afterScreenshotFileName: string | null;
@@ -123,6 +165,8 @@ describe("scriber integration", () => {
     expect(clickAction.beforeScreenshotFileName).toMatch(/_before\.png$/);
     expect(clickAction.atScreenshotFileName).toMatch(/_at\.png$/);
     expect(clickAction.afterScreenshotFileName).toMatch(/_after\.png$/);
+    expect(clickAction.videoFrame).toBeGreaterThanOrEqual(0);
+    expect(clickAction.videoFrameMod65536).toBe(clickAction.videoFrame % 65536);
 
     const beforeDomPath = snapshotPath(
       outputDir,
@@ -150,6 +194,25 @@ describe("scriber integration", () => {
       await readFile(resolve(outputDir, "actions.json"), "utf8")
     ) as Array<{
       actionType: string;
+      videoFrame: number;
+      videoFrameMod65536: number;
+      overlayOcr?: {
+        before?: {
+          value: number | null;
+          expectedVideoFrameMod65536: number;
+          matchesExpected: boolean | null;
+        };
+        at?: {
+          value: number | null;
+          expectedVideoFrameMod65536: number;
+          matchesExpected: boolean | null;
+        };
+        after?: {
+          value: number | null;
+          expectedVideoFrameMod65536: number;
+          matchesExpected: boolean | null;
+        };
+      };
       beforeScreenshotFileName: string | null;
       atScreenshotFileName: string | null;
       afterScreenshotFileName: string | null;
@@ -160,6 +223,18 @@ describe("scriber integration", () => {
     expect(consolidatedClickAction?.beforeScreenshotFileName).toMatch(/_before\.png$/);
     expect(consolidatedClickAction?.atScreenshotFileName).toMatch(/_at\.png$/);
     expect(consolidatedClickAction?.afterScreenshotFileName).toMatch(/_after\.png$/);
+    expect(consolidatedClickAction?.videoFrameMod65536).toBe(
+      (consolidatedClickAction?.videoFrame ?? 0) % 65536
+    );
+    expect(consolidatedClickAction?.overlayOcr?.before).toBeTruthy();
+    expect(consolidatedClickAction?.overlayOcr?.at).toBeTruthy();
+    expect(consolidatedClickAction?.overlayOcr?.after).toBeTruthy();
+    expect(typeof consolidatedClickAction?.overlayOcr?.at?.expectedVideoFrameMod65536).toBe(
+      "number"
+    );
+    if (consolidatedClickAction?.overlayOcr?.at?.value !== null) {
+      expect(consolidatedClickAction?.overlayOcr?.at?.matchesExpected).toBeTypeOf("boolean");
+    }
   });
 
   it("waits for settled DOM mutations before after snapshots", async () => {

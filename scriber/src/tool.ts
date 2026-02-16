@@ -133,6 +133,7 @@ export const startTool = async (
 ): Promise<StartResult> => {
   const startUrl = normalizeStartUrl(options.startUrl);
   const startedAt = new Date();
+  const startTimestamp = startedAt.toISOString();
   const sessionId = buildSessionId(startUrl, startedAt);
   const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
   await mkdir(outputDir, { recursive: true });
@@ -160,6 +161,7 @@ export const startTool = async (
   const recorder = new ScriberRecorder({
     sessionId,
     outputDir,
+    sessionStartTimestamp: startTimestamp,
     debounceMs: options.debounceMs ?? 500,
     quietWindowMs: options.quietWindowMs ?? 300,
     quietTimeoutMs: options.quietTimeoutMs ?? 5000,
@@ -175,7 +177,6 @@ export const startTool = async (
     () => Intl.DateTimeFormat().resolvedOptions().timeZone
   );
 
-  const startTimestamp = startedAt.toISOString();
   const meta: SessionMeta = {
     sessionId,
     startTimestamp,
