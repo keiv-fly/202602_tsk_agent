@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 import { RecorderSession, ScriberRecorder } from "./tooling/recorder.js";
@@ -25,6 +26,10 @@ export interface StartResult extends RecorderSession {
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 const RECORDED_VIDEO_FILE = "video.webm";
+const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+const defaultSessionOutputDir = (sessionId: string) =>
+  resolve(PROJECT_ROOT, "sessions", sessionId, "01_scriber");
 
 const resolveExistingVideoPath = async (outputDir: string) => {
   const { readdir, rename } = await import("node:fs/promises");
@@ -134,7 +139,9 @@ export const startTool = async (
   const startUrl = normalizeStartUrl(options.startUrl);
   const startedAt = new Date();
   const sessionId = buildSessionId(startUrl, startedAt);
-  const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
+  const outputDir = options.outputDir
+    ? resolve(options.outputDir)
+    : defaultSessionOutputDir(sessionId);
   await mkdir(outputDir, { recursive: true });
   await mkdir(resolve(outputDir, "dom"), { recursive: true });
 
