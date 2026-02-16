@@ -1,0 +1,546 @@
+[
+  {
+    "stepNumber": 1,
+    "t": "2026-02-16T18:51:32.995Z",
+    "kind": "goto",
+    "url": "about:blank",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 1,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "",
+      "titleAfter": "The Good Ride - A Snowboard Gear Buying Guide",
+      "urlBefore": "about:blank",
+      "urlAfter": "https://thegoodride.com/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 2,
+    "t": "2026-02-16T18:51:35.689Z",
+    "kind": "navigation",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "The Good Ride - A Snowboard Gear Buying Guide",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 3,
+    "t": "2026-02-16T18:51:36.566Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "img",
+      "name": "7 of our favorite nowboard . LTR: Ye Great , Powder Pill, Burton Skeleton Key",
+      "selector": "role=img[name=\"7 of our favorite  nowboard . LTR: Ye  Great , Powder Pill, Burton Skeleton Key\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "The Good Ride - A Snowboard Gear Buying Guide",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 4,
+    "t": "2026-02-16T18:51:37.933Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "div",
+      "selector": "#cmpwrapper"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "The Good Ride - A Snowboard Gear Buying Guide",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 5,
+    "t": "2026-02-16T18:51:39.490Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "div",
+      "selector": "#cmpwrapper"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "The Good Ride - A Snowboard Gear Buying Guide",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 6,
+    "t": "2026-02-16T18:51:39.724Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "img",
+      "name": "7 more of our favorite nowboard",
+      "selector": "role=img[name=\"7 more of our favorite  nowboard\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "Snowboard Reviews - The Good Ride",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/?mens=1"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 7,
+    "t": "2026-02-16T18:51:40.138Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "h2",
+      "name": "Snowboard Review",
+      "selector": "role=h2[name=\"Snowboard Review\"]",
+      "visibleText": "Snowboard Reviews"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "Snowboard Reviews - The Good Ride",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/?mens=1"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 8,
+    "t": "2026-02-16T18:51:40.436Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "link",
+      "name": "Men'",
+      "selector": "role=link[name=\"Men'\"]",
+      "visibleText": "Men's"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": null,
+      "titleAfter": null,
+      "urlBefore": null,
+      "urlAfter": null
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 9,
+    "t": "2026-02-16T18:51:40.822Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 2,
+    "target": {
+      "role": "link",
+      "name": "Men'",
+      "selector": "role=link[name=\"Men'\"]",
+      "visibleText": "Men's"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "The Good Ride - A Snowboard Gear Buying Guide",
+      "titleAfter": "Snowboard Reviews - The Good Ride",
+      "urlBefore": "https://thegoodride.com/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/?mens=1"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 10,
+    "t": "2026-02-16T18:51:41.962Z",
+    "kind": "navigation",
+    "url": "https://thegoodride.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 3,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Snowboard Reviews - The Good Ride",
+      "titleAfter": "Snowboard Reviews - The Good Ride",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/?mens=1"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 11,
+    "t": "2026-02-16T18:51:42.316Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 3,
+    "target": {
+      "role": "img",
+      "name": "K2 Excavator",
+      "selector": "role=img[name=\"K2 Excavator\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Snowboard Reviews - The Good Ride",
+      "titleAfter": "Snowboard Reviews - The Good Ride",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/?mens=1"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 12,
+    "t": "2026-02-16T18:51:43.424Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 3,
+    "target": {
+      "role": "img",
+      "name": "Telo BackSla h",
+      "selector": "role=img[name=\"Telo   BackSla h\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Snowboard Reviews - The Good Ride",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 13,
+    "t": "2026-02-16T18:51:43.905Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 3,
+    "target": {
+      "role": "img",
+      "name": "Telo BackSla h",
+      "selector": "role=img[name=\"Telo   BackSla h\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": null,
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 14,
+    "t": "2026-02-16T18:51:44.638Z",
+    "kind": "navigation",
+    "url": "https://thegoodride.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 4,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": null,
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 15,
+    "t": "2026-02-16T18:51:44.972Z",
+    "kind": "navigation",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": null,
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/?mens=1",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 16,
+    "t": "2026-02-16T18:51:45.901Z",
+    "kind": "hover",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "iframe",
+      "name": "YouTube video player",
+      "selector": "#youtubePlayer"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  },
+  {
+    "stepNumber": 17,
+    "t": "2026-02-16T18:51:46.226Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "button",
+      "name": "See EU Link",
+      "selector": "role=button[name=\"See EU Link\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": false,
+      "syntheticReason": "Programmatic or synthetic click metadata detected."
+    }
+  },
+  {
+    "stepNumber": 18,
+    "t": "2026-02-16T18:51:46.227Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "button",
+      "name": "See EU Link",
+      "selector": "role=button[name=\"See EU Link\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": false,
+      "syntheticReason": "Programmatic or synthetic click metadata detected."
+    }
+  },
+  {
+    "stepNumber": 19,
+    "t": "2026-02-16T18:51:46.228Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "button",
+      "name": "See EU Link",
+      "selector": "role=button[name=\"See EU Link\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": false,
+      "syntheticReason": "Programmatic or synthetic click metadata detected."
+    }
+  },
+  {
+    "stepNumber": 20,
+    "t": "2026-02-16T18:51:46.235Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "button",
+      "name": "See EU Link",
+      "selector": "role=button[name=\"See EU Link\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": false,
+      "syntheticReason": "Programmatic or synthetic click metadata detected."
+    }
+  },
+  {
+    "stepNumber": 21,
+    "t": "2026-02-16T18:51:46.240Z",
+    "kind": "click",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "role": "button",
+      "name": "See EU Link",
+      "selector": "role=button[name=\"See EU Link\"]"
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "titleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+      "urlBefore": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+      "urlAfter": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/"
+    },
+    "notes": {
+      "isUserInitiated": false,
+      "syntheticReason": "Programmatic or synthetic click metadata detected."
+    }
+  },
+  {
+    "stepNumber": 23,
+    "t": "2026-02-16T18:51:48.882Z",
+    "kind": "scroll_page",
+    "url": "https://thegoodride.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "navigationGroup": 5,
+    "target": {
+      "selector": null
+    },
+    "evidence": {
+      "beforeShot": null,
+      "atShot": null,
+      "afterShot": null,
+      "titleBefore": null,
+      "titleAfter": null,
+      "urlBefore": null,
+      "urlAfter": null
+    },
+    "notes": {
+      "isUserInitiated": true
+    }
+  }
+]

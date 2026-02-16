@@ -1,0 +1,15 @@
+{
+  "sessionId": "20260216_2151_www.thegoodride.com",
+  "startTimestamp": "2026-02-16T18:51:32.973Z",
+  "browserType": "chromium",
+  "browserVersion": "145.0.7632.6",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "timezone": "Europe/Moscow",
+  "playwrightVersion": "1.58.1",
+  "startUrl": "https://www.thegoodride.com",
+  "endTimestamp": "2026-02-16T18:51:52.210Z"
+}

@@ -1,0 +1,1104 @@
+[
+  {
+    "actionId": "8f411c3a-25e7-4b17-9d17-1f42ca0c81dc",
+    "stepNumber": 1,
+    "timestamp": "2026-02-16T18:51:32.995Z",
+    "timeSinceVideoStartNs": 22199951,
+    "actionType": "goto",
+    "url": "about:blank",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "",
+    "pageTitleAfter": "The Website",
+    "urlBefore": "about:blank",
+    "urlAfter": "https://thewebsite.com/",
+    "primarySelector": null,
+    "fallbackSelectors": []
+  },
+  {
+    "actionId": "b75b8c61-d1ae-4944-9c4a-83f5e999354d",
+    "stepNumber": 2,
+    "timestamp": "2026-02-16T18:51:35.689Z",
+    "timeSinceVideoStartNs": 2716199951,
+    "actionType": "navigation",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/",
+    "primarySelector": null,
+    "fallbackSelectors": [],
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "341be004-1092-48df-b12d-ac3f4e0eb6d8",
+    "stepNumber": 3,
+    "timestamp": "2026-02-16T18:51:36.566Z",
+    "timeSinceVideoStartNs": 3593699951,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/",
+    "target": {
+      "tagName": "img",
+      "accessibleName": "7 of our favorite  nowboard . LTR: Ye  Great , Powder Pill, Burton Skeleton Key",
+      "role": "img",
+      "isPassword": false
+    },
+    "primarySelector": "role=img[name=\"7 of our favorite  nowboard . LTR: Ye  Great , Powder Pill, Burton Skeleton Key\"]",
+    "fallbackSelectors": [
+      "div#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1) > img:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[1]/div[1]/a[1]/img[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "e397258b-7bcb-4fcc-b655-7e2053c1a579",
+    "stepNumber": 4,
+    "timestamp": "2026-02-16T18:51:37.933Z",
+    "timeSinceVideoStartNs": 4960699951,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/",
+    "target": {
+      "tagName": "div",
+      "id": "cmpwrapper",
+      "className": "cmpwrapper",
+      "isPassword": false
+    },
+    "primarySelector": "#cmpwrapper",
+    "fallbackSelectors": [
+      "div#cmpwrapper",
+      "xpath=//*[@id=\"cmpwrapper\"]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "b17f26d3-ea35-4254-a210-1e4342dbdc13",
+    "stepNumber": 5,
+    "timestamp": "2026-02-16T18:51:39.490Z",
+    "timeSinceVideoStartNs": 6517399902,
+    "actionType": "click",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/",
+    "target": {
+      "tagName": "div",
+      "id": "cmpwrapper",
+      "className": "cmpwrapper",
+      "isPassword": false
+    },
+    "primarySelector": "#cmpwrapper",
+    "fallbackSelectors": [
+      "div#cmpwrapper",
+      "xpath=//*[@id=\"cmpwrapper\"]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": true,
+      "clickCount": 1,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": true,
+        "mousedown": true,
+        "mouseup": true
+      },
+      "programmaticClick": false,
+      "likelySynthetic": false,
+      "pointerType": "mouse",
+      "timingsMs": {
+        "sincePointerDown": 102.1,
+        "sinceMouseDown": 102,
+        "sinceMouseUp": 0.6,
+        "sinceProgrammaticClick": null
+      },
+      "coordinates": {
+        "clientX": 848,
+        "clientY": 458,
+        "screenX": 864,
+        "screenY": 555
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "dbe1805e-7c1d-4554-b8c0-e4d84af4252c",
+    "stepNumber": 6,
+    "timestamp": "2026-02-16T18:51:39.724Z",
+    "timeSinceVideoStartNs": 6751800048,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "Snowboard Reviews - The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "target": {
+      "tagName": "img",
+      "accessibleName": "7 more of our favorite  nowboard",
+      "role": "img",
+      "isPassword": false
+    },
+    "primarySelector": "role=img[name=\"7 more of our favorite  nowboard\"]",
+    "fallbackSelectors": [
+      "div#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > img:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[2]/div[1]/img[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "b0877b9c-c08e-4801-8354-8ce3ca0fd2f5",
+    "stepNumber": 7,
+    "timestamp": "2026-02-16T18:51:40.138Z",
+    "timeSinceVideoStartNs": 7165500000,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "Snowboard Reviews - The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "target": {
+      "tagName": "h2",
+      "accessibleName": "Snowboard Review",
+      "text": "Snowboard Reviews",
+      "isPassword": false
+    },
+    "primarySelector": "role=h2[name=\"Snowboard Review\"]",
+    "fallbackSelectors": [
+      "text=\"Snowboard Reviews\"",
+      "div#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > h2:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[3]/div[2]/h2[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "6f87d7b8-bb02-4a11-8002-e83f4923aec6",
+    "stepNumber": 8,
+    "timestamp": "2026-02-16T18:51:40.436Z",
+    "timeSinceVideoStartNs": 7463100097,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "target": {
+      "tagName": "a",
+      "accessibleName": "Men'",
+      "role": "link",
+      "text": "Men's",
+      "isPassword": false
+    },
+    "primarySelector": "role=link[name=\"Men'\"]",
+    "fallbackSelectors": [
+      "text=\"Men's\"",
+      "div#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > h3:nth-of-type(1) > a:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[3]/div[2]/h3[1]/a[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": false
+    }
+  },
+  {
+    "actionId": "7d259034-508f-45ff-8763-881d5301a867",
+    "stepNumber": 9,
+    "timestamp": "2026-02-16T18:51:40.822Z",
+    "timeSinceVideoStartNs": 7849399902,
+    "actionType": "click",
+    "url": "https://thewebsite.com/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "The Website",
+    "pageTitleAfter": "Snowboard Reviews - The Website",
+    "urlBefore": "https://thewebsite.com/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "target": {
+      "tagName": "a",
+      "accessibleName": "Men'",
+      "role": "link",
+      "text": "Men's",
+      "isPassword": false
+    },
+    "primarySelector": "role=link[name=\"Men'\"]",
+    "fallbackSelectors": [
+      "text=\"Men's\"",
+      "div#main > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > h3:nth-of-type(1) > a:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[3]/div[2]/h3[1]/a[1]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": true,
+      "clickCount": 1,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": true,
+        "mousedown": true,
+        "mouseup": true
+      },
+      "programmaticClick": false,
+      "likelySynthetic": false,
+      "pointerType": "mouse",
+      "timingsMs": {
+        "sincePointerDown": 98,
+        "sinceMouseDown": 98,
+        "sinceMouseUp": 0.4,
+        "sinceProgrammaticClick": null
+      },
+      "coordinates": {
+        "clientX": 577,
+        "clientY": 581,
+        "screenX": 593,
+        "screenY": 678
+      }
+    }
+  },
+  {
+    "actionId": "17bbba2d-f6b7-4c69-832f-1a6f302a384f",
+    "stepNumber": 10,
+    "timestamp": "2026-02-16T18:51:41.962Z",
+    "timeSinceVideoStartNs": 8989699951,
+    "actionType": "navigation",
+    "url": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Snowboard Reviews - The Website",
+    "pageTitleAfter": "Snowboard Reviews - The Website",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "primarySelector": null,
+    "fallbackSelectors": [],
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "65b049cd-8a12-4195-81c5-5813e5534d4a",
+    "stepNumber": 11,
+    "timestamp": "2026-02-16T18:51:42.316Z",
+    "timeSinceVideoStartNs": 9343000000,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Snowboard Reviews - The Website",
+    "pageTitleAfter": "Snowboard Reviews - The Website",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "target": {
+      "tagName": "img",
+      "className": "productthumb",
+      "accessibleName": "K2 Excavator",
+      "role": "img",
+      "isPassword": false
+    },
+    "primarySelector": "role=img[name=\"K2 Excavator\"]",
+    "fallbackSelectors": [
+      "div#applications > div:nth-of-type(2) > a:nth-of-type(1) > div:nth-of-type(1) > img:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[3]/form[1]/div[1]/div[2]/a[1]/div[1]/img[2]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "e291f4bd-340f-49ef-850d-58f6b329cf77",
+    "stepNumber": 12,
+    "timestamp": "2026-02-16T18:51:43.424Z",
+    "timeSinceVideoStartNs": 10451000000,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Snowboard Reviews - The Website",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "img",
+      "className": "productthumb",
+      "accessibleName": "Telo   BackSla h",
+      "role": "img",
+      "isPassword": false
+    },
+    "primarySelector": "role=img[name=\"Telo   BackSla h\"]",
+    "fallbackSelectors": [
+      "div#applications > div:nth-of-type(1) > a:nth-of-type(1) > div:nth-of-type(1) > img:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/form[1]/div[1]/div[1]/a[1]/div[1]/img[2]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "0720fb7d-f2a3-4656-8c6a-d5d013803c92",
+    "stepNumber": 13,
+    "timestamp": "2026-02-16T18:51:43.905Z",
+    "timeSinceVideoStartNs": 10932099853,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "img",
+      "className": "productthumb",
+      "accessibleName": "Telo   BackSla h",
+      "role": "img",
+      "isPassword": false
+    },
+    "primarySelector": "role=img[name=\"Telo   BackSla h\"]",
+    "fallbackSelectors": [
+      "div#applications > div:nth-of-type(1) > a:nth-of-type(1) > div:nth-of-type(1) > img:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/div[3]/form[1]/div[1]/div[1]/a[1]/div[1]/img[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": true,
+      "clickCount": 1,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": true,
+        "mousedown": true,
+        "mouseup": true
+      },
+      "programmaticClick": false,
+      "likelySynthetic": false,
+      "pointerType": "mouse",
+      "timingsMs": {
+        "sincePointerDown": 112.8,
+        "sinceMouseDown": 112.8,
+        "sinceMouseUp": 0.5,
+        "sinceProgrammaticClick": null
+      },
+      "coordinates": {
+        "clientX": 379,
+        "clientY": 424,
+        "screenX": 395,
+        "screenY": 521
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "275522bf-afe0-43f7-9e98-e867a4e98193",
+    "stepNumber": 14,
+    "timestamp": "2026-02-16T18:51:44.638Z",
+    "timeSinceVideoStartNs": 11665399902,
+    "actionType": "navigation",
+    "url": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "primarySelector": null,
+    "fallbackSelectors": [],
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "ddb1390b-e9c5-4823-b3f2-433e1a4b1339",
+    "stepNumber": 15,
+    "timestamp": "2026-02-16T18:51:44.972Z",
+    "timeSinceVideoStartNs": 11999099853,
+    "actionType": "navigation",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/?mens=1",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "primarySelector": null,
+    "fallbackSelectors": [],
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "9d1986b2-a6eb-405b-b6c4-b01664e26aba",
+    "stepNumber": 16,
+    "timestamp": "2026-02-16T18:51:45.901Z",
+    "timeSinceVideoStartNs": 12928299804,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "iframe",
+      "id": "youtubePlayer",
+      "accessibleName": "YouTube video player",
+      "isPassword": false
+    },
+    "primarySelector": "#youtubePlayer",
+    "fallbackSelectors": [
+      "role=iframe[name=\"YouTube video player\"]",
+      "iframe#youtubePlayer",
+      "xpath=//*[@id=\"youtubePlayer\"]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": true
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "f0f78922-7851-43b8-862f-a1be534a01bd",
+    "stepNumber": 17,
+    "timestamp": "2026-02-16T18:51:46.226Z",
+    "timeSinceVideoStartNs": 13253099853,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "button",
+      "className": "active",
+      "accessibleName": "See EU Link",
+      "role": "button",
+      "isPassword": false
+    },
+    "primarySelector": "role=button[name=\"See EU Link\"]",
+    "fallbackSelectors": [
+      "div#mobile_wtb_one > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[1]/div[6]/div[1]/div[1]/div[1]/button[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": false,
+      "clickCount": 0,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": false,
+        "mousedown": false,
+        "mouseup": false
+      },
+      "programmaticClick": true,
+      "likelySynthetic": true,
+      "pointerType": "",
+      "timingsMs": {
+        "sincePointerDown": null,
+        "sinceMouseDown": null,
+        "sinceMouseUp": null,
+        "sinceProgrammaticClick": 0
+      },
+      "coordinates": {
+        "clientX": 0,
+        "clientY": 0,
+        "screenX": 0,
+        "screenY": 0
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "26afd297-2763-4404-9345-2586d8a6e6a2",
+    "stepNumber": 18,
+    "timestamp": "2026-02-16T18:51:46.227Z",
+    "timeSinceVideoStartNs": 13254500000,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "button",
+      "className": "active",
+      "accessibleName": "See EU Link",
+      "role": "button",
+      "isPassword": false
+    },
+    "primarySelector": "role=button[name=\"See EU Link\"]",
+    "fallbackSelectors": [
+      "div#mobile_wtb_two > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[1]/div[8]/div[1]/div[1]/div[1]/button[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": false,
+      "clickCount": 0,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": false,
+        "mousedown": false,
+        "mouseup": false
+      },
+      "programmaticClick": true,
+      "likelySynthetic": true,
+      "pointerType": "",
+      "timingsMs": {
+        "sincePointerDown": null,
+        "sinceMouseDown": null,
+        "sinceMouseUp": null,
+        "sinceProgrammaticClick": 0.1
+      },
+      "coordinates": {
+        "clientX": 0,
+        "clientY": 0,
+        "screenX": 0,
+        "screenY": 0
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "d6a200ff-623e-4ecc-9246-4daffdebfa0c",
+    "stepNumber": 19,
+    "timestamp": "2026-02-16T18:51:46.228Z",
+    "timeSinceVideoStartNs": 13255399902,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "button",
+      "className": "active",
+      "accessibleName": "See EU Link",
+      "role": "button",
+      "isPassword": false
+    },
+    "primarySelector": "role=button[name=\"See EU Link\"]",
+    "fallbackSelectors": [
+      "article#new_review_article > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[2]/div[1]/div[1]/div[1]/button[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": false,
+      "clickCount": 0,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": false,
+        "mousedown": false,
+        "mouseup": false
+      },
+      "programmaticClick": true,
+      "likelySynthetic": true,
+      "pointerType": "",
+      "timingsMs": {
+        "sincePointerDown": null,
+        "sinceMouseDown": null,
+        "sinceMouseUp": null,
+        "sinceProgrammaticClick": 0
+      },
+      "coordinates": {
+        "clientX": 0,
+        "clientY": 0,
+        "screenX": 0,
+        "screenY": 0
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "9609fdfd-9b4a-49b4-b535-d8cdb812876e",
+    "stepNumber": 20,
+    "timestamp": "2026-02-16T18:51:46.235Z",
+    "timeSinceVideoStartNs": 13262899902,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "button",
+      "className": "active",
+      "accessibleName": "See EU Link",
+      "role": "button",
+      "isPassword": false
+    },
+    "primarySelector": "role=button[name=\"See EU Link\"]",
+    "fallbackSelectors": [
+      "article#new_review_article > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > button:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[2]/div[2]/div[1]/button[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": false,
+      "clickCount": 0,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": false,
+        "mousedown": false,
+        "mouseup": false
+      },
+      "programmaticClick": true,
+      "likelySynthetic": true,
+      "pointerType": "",
+      "timingsMs": {
+        "sincePointerDown": null,
+        "sinceMouseDown": null,
+        "sinceMouseUp": null,
+        "sinceProgrammaticClick": 0
+      },
+      "coordinates": {
+        "clientX": 0,
+        "clientY": 0,
+        "screenX": 0,
+        "screenY": 0
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "e847c64f-1aa0-4eed-b96b-22df72d60d7b",
+    "stepNumber": 21,
+    "timestamp": "2026-02-16T18:51:46.240Z",
+    "timeSinceVideoStartNs": 13267899902,
+    "actionType": "click",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "pageTitleAfter": "Telos BackSlash 2021-2026 Snowboard Review (with video)",
+    "urlBefore": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "urlAfter": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "target": {
+      "tagName": "button",
+      "className": "active",
+      "accessibleName": "See EU Link",
+      "role": "button",
+      "isPassword": false
+    },
+    "primarySelector": "role=button[name=\"See EU Link\"]",
+    "fallbackSelectors": [
+      "div#mobile_wtb_three > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[3]/div[1]/div[1]/div[1]/button[2]"
+    ],
+    "details": {
+      "button": 0,
+      "modifiers": {
+        "alt": false,
+        "ctrl": false,
+        "meta": false,
+        "shift": false
+      },
+      "isTrusted": false,
+      "clickCount": 0,
+      "sourceEventType": "PointerEvent",
+      "eventSequence": {
+        "pointerdown": false,
+        "mousedown": false,
+        "mouseup": false
+      },
+      "programmaticClick": true,
+      "likelySynthetic": true,
+      "pointerType": "",
+      "timingsMs": {
+        "sincePointerDown": null,
+        "sinceMouseDown": null,
+        "sinceMouseUp": null,
+        "sinceProgrammaticClick": 0
+      },
+      "coordinates": {
+        "clientX": 0,
+        "clientY": 0,
+        "screenX": 0,
+        "screenY": 0
+      }
+    },
+    "overlayRect": {
+      "left": 6,
+      "top": 6,
+      "width": 87,
+      "height": 32
+    },
+    "ocrCropRect": {
+      "left": 13,
+      "top": 11,
+      "width": 72,
+      "height": 22
+    }
+  },
+  {
+    "actionId": "643f2c4f-f5be-4178-872a-d2ec858102fd",
+    "stepNumber": 22,
+    "timestamp": "2026-02-16T18:51:48.796Z",
+    "timeSinceVideoStartNs": 15823099853,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "target": {
+      "tagName": "div",
+      "className": "summary span16",
+      "accessibleName": "Summary\n                        The Telo  BackSla h i  a board I've loved in the pa t, and  poiler alert, love even more now that it ha   ome D30, a little more chatter ab orption in compari on to pa t model . A  lightly tweaked  hape, but  till that  ame great  hort, wide per onality that ha  amazing pop, decent float in powder, fun to butter, fun to play around, and ride  a lot bigger than you would think for thi  148  ize.",
+      "text": "Summary\n                        The Telos BackSlash is a board I've loved in the past, and spoiler alert, love even more",
+      "isPassword": false
+    },
+    "primarySelector": "role=div[name=\"Summary\n                        The Telo  BackSla h i  a board I've loved in the pa t, and  poiler alert, love even more now that it ha   ome D30, a little more chatter ab orption in compari on to pa t model . A  lightly tweaked  hape, but  till that  ame great  hort, wide per onality that ha  amazing pop, decent float in powder, fun to butter, fun to play around, and ride  a lot bigger than you would think for thi  148  ize.\"]",
+    "fallbackSelectors": [
+      "text=\"Summary\n                        The Telos BackSlash is a board I've loved in the past, and spoiler alert, love even more now that it has some D30, a little more chatter absorption in comparison to past models. A slightly tweaked shape, but still that same great short, wide personality that has amazing pop, decent float in powder, fun to butter, fun to play around, and rides a lot bigger than you would think for this 148 size.\"",
+      "article#new_review_article > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(5)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[1]/div[5]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": false
+    }
+  },
+  {
+    "actionId": "58288cf5-355f-460c-8797-3d649f2dc663",
+    "stepNumber": 23,
+    "timestamp": "2026-02-16T18:51:48.882Z",
+    "timeSinceVideoStartNs": 15909799804,
+    "actionType": "scroll_page",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "primarySelector": null,
+    "fallbackSelectors": [],
+    "details": {
+      "positionY": 600
+    }
+  },
+  {
+    "actionId": "29c640ce-8a35-4242-98ac-04b91c68e6b9",
+    "stepNumber": 24,
+    "timestamp": "2026-02-16T18:51:49.372Z",
+    "timeSinceVideoStartNs": 16399399902,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "target": {
+      "tagName": "td",
+      "className": "rating-align-right",
+      "accessibleName": "Intermediate - Expert",
+      "text": "Intermediate - Expert",
+      "isPassword": false
+    },
+    "primarySelector": "role=td[name=\"Intermediate - Expert\"]",
+    "fallbackSelectors": [
+      "text=\"Intermediate - Expert\"",
+      "article#new_review_article > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(7) > div:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[1]/div[7]/div[1]/table[1]/tbody[1]/tr[2]/td[2]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": false
+    }
+  },
+  {
+    "actionId": "d2bae9c6-3cef-4392-9af9-59ed2d6acaca",
+    "stepNumber": 25,
+    "timestamp": "2026-02-16T18:51:50.130Z",
+    "timeSinceVideoStartNs": 17157899902,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "target": {
+      "tagName": "div",
+      "className": "main_column",
+      "accessibleName": "var player;\n\n",
+      "text": "var player;\n\n                    function onYouTubeIframeAPIReady() {\n                        // Initialize the YouTube ",
+      "isPassword": false
+    },
+    "primarySelector": "role=div[name=\"var player;\n\n\"]",
+    "fallbackSelectors": [
+      "text=\"var player;\n\n                    function onYouTubeIframeAPIReady() {\n                        // Initialize the YouTube Player immediately on page load\n                        player = new YT.Player('youtubePlayer', {\n                            height: '360',\n                            width: '640',\n                            videoId: 'PMEqqyyX5tM',\n                            playerVars: {\n                                'autoplay': 1,\n                                'controls': 1,\n                                'mute': 0\n                            }\n                        });\n                    }\n                    //var customVideo = document.getElementById(\"customVideo\");\n                    //var youtubePlayerDiv = document.getElementById(\"youtubePlayer\");\n                    //var player;\n                    //\n                    //function onYouTubeIframeAPIReady() {\n                    //    // This function will be called but the player will not be initialized y",
+      "article#new_review_article > div:nth-of-type(2) > div:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/div[2]/div[1]/div[1]/div[1]/article[1]/div[2]/div[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": false
+    }
+  },
+  {
+    "actionId": "f03e73eb-ada1-473b-9c88-4cd51372085b",
+    "stepNumber": 26,
+    "timestamp": "2026-02-16T18:51:50.497Z",
+    "timeSinceVideoStartNs": 17524699951,
+    "actionType": "hover",
+    "url": "https://thewebsite.com/snowboard-reviews/telos-backslash-snowboard-review/",
+    "pageId": "9c80369f-bf3e-447d-a3bb-e85f73bbdd6d",
+    "pageTitleBefore": null,
+    "pageTitleAfter": null,
+    "urlBefore": null,
+    "urlAfter": null,
+    "target": {
+      "tagName": "div",
+      "className": "navbar-inner",
+      "accessibleName": "Board  \n\n\tThe ",
+      "isPassword": false
+    },
+    "primarySelector": "role=div[name=\"Board  \n\n\"]",
+    "fallbackSelectors": [
+      "text=\"Boards \n\n\tThe\"",
+      "header#banner > div:nth-of-type(1)",
+      "xpath=/html[1]/body[1]/header[1]/div[1]"
+    ],
+    "details": {
+      "hoverUiChangeDetected": false
+    }
+  }
+]
