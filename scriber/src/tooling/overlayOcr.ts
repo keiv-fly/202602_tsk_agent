@@ -116,12 +116,28 @@ export const parseOverlayDigits = (input: string | null | undefined) => {
   return parsed;
 };
 
-export const createOverlayOcrWorker = async () => {
+export const TESSERACT_BEST_ENG_LANG_PATH =
+  "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0";
+export const TESSERACT_BEST_OEM = Tesseract.OEM.TESSERACT_LSTM_COMBINED;
+
+export interface CreateOverlayOcrWorkerOptions {
+  langPath?: string;
+  oem?: Tesseract.OEM;
+}
+
+export const createOverlayOcrWorker = async (
+  options: CreateOverlayOcrWorkerOptions = {}
+) => {
   const cachePath = resolve(tmpdir(), "scriber-tesseract-cache");
-  const worker = await Tesseract.createWorker("eng", 1, {
-    logger: () => undefined,
-    cachePath
-  });
+  const worker = await Tesseract.createWorker(
+    "eng",
+    options.oem ?? Tesseract.OEM.LSTM_ONLY,
+    {
+      logger: () => undefined,
+      cachePath,
+      ...(options.langPath ? { langPath: options.langPath } : {})
+    }
+  );
   await worker.setParameters({
     tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
     tessedit_char_whitelist: "0123456789"

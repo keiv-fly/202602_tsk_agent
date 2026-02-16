@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { performance as nodePerformance } from "node:perf_hooks";
 import { basename, resolve } from "node:path";
@@ -25,8 +25,11 @@ import {
   TargetMetadata
 } from "./types.js";
 import {
+  buildOverlayCutPath,
   createOverlayOcrWorker,
   readOverlayNumberFromScreenshot,
+  TESSERACT_BEST_ENG_LANG_PATH,
+  TESSERACT_BEST_OEM,
   type OverlayOcrRawResult
 } from "./overlayOcr.js";
 import { extractFramesFromVideo } from "./video.js";
@@ -99,6 +102,9 @@ const VIDEO_FRAME_RATE = 30;
 const VIDEO_FRAME_MODULUS = 65536;
 const OCR_CALIBRATION_MIN_CONFIDENCE = 70;
 const OCR_CALIBRATION_MAX_ABS_DELTA_FRAMES = 180;
+const LOCAL_SEARCH_RADIUS_FRAMES = 2;
+const LOCAL_SEARCH_MIN_CONFIDENCE = 70;
+const OCR_BEST_MODEL_RETRY_MIN_CONFIDENCE = 92;
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
 
 export class ScriberRecorder {
@@ -719,22 +725,57 @@ export class ScriberRecorder {
     const snapshots = [...this.pendingVideoSnapshots].sort(
       (left, right) => left.capturedAt - right.capturedAt
     );
+    const frameAdjustmentToMs = (frameAdjustment: number) =>
+      (frameAdjustment * 1000) / VIDEO_FRAME_RATE;
+    const computeOffsetMs = (baseOffsetMs: number, frameAdjustment: number) =>
+      Math.max(0, baseOffsetMs - frameAdjustmentToMs(frameAdjustment));
+    const getSnapshotTargetTimeMs = (snapshot: PendingVideoSnapshot) => {
+      const actionTimeMs = new Date(snapshot.action.timestamp).getTime();
+      if (!Number.isFinite(actionTimeMs)) {
+        return snapshot.capturedAt;
+      }
+      const phaseOffsetMs =
+        snapshot.descriptor.phase === "before"
+          ? -300
+          : snapshot.descriptor.phase === "after"
+            ? 800
+            : 0;
+      return actionTimeMs + phaseOffsetMs;
+    };
+    const cleanupScreenshotArtifacts = async (screenshotPath: string) => {
+      await Promise.allSettled([
+        unlink(screenshotPath),
+        unlink(buildOverlayCutPath(screenshotPath))
+      ]);
+    };
+    const cleanupAllScreenshotArtifacts = async () => {
+      await Promise.all(
+        snapshots.map((snapshot) => cleanupScreenshotArtifacts(snapshot.screenshotPath))
+      );
+    };
+
+    const targetCaptureTimesMs = snapshots.map((snapshot) =>
+      getSnapshotTargetTimeMs(snapshot)
+    );
+    const baseOffsetsMs = targetCaptureTimesMs.map((targetTimeMs) =>
+      Math.max(0, targetTimeMs - sessionStartMs)
+    );
+
     const buildExtractionRequests = (frameAdjustment = 0) =>
-      snapshots.map((snapshot) => ({
+      snapshots.map((snapshot, index) => ({
         outputPath: snapshot.screenshotPath,
-        offsetMs: Math.max(
-          0,
-          snapshot.capturedAt -
-            sessionStartMs -
-            (frameAdjustment * 1000) / VIDEO_FRAME_RATE
-        )
+        offsetMs: computeOffsetMs(baseOffsetsMs[index] ?? 0, frameAdjustment)
       }));
 
+    await cleanupAllScreenshotArtifacts();
     let outcomes = await extractFramesFromVideo(videoPath, buildExtractionRequests(0));
-    let ocrWorker: Awaited<ReturnType<typeof createOverlayOcrWorker>> | null = null;
+    type OverlayOcrWorker = Awaited<ReturnType<typeof createOverlayOcrWorker>>;
+    let ocrWorker: OverlayOcrWorker | null = null;
     let ocrWorkerError: string | null = null;
-    const expectedFrames = snapshots.map((snapshot) =>
-      this.buildVideoFrameInfoFromMs(snapshot.capturedAt, sessionStartMs)
+    let bestOcrWorker: OverlayOcrWorker | null = null;
+    let bestOcrWorkerError: string | null = null;
+    const expectedFrames = targetCaptureTimesMs.map((targetTimeMs) =>
+      this.buildVideoFrameInfoFromMs(targetTimeMs, sessionStartMs)
     );
     if (!ocrWorker && !ocrWorkerError) {
       try {
@@ -743,6 +784,69 @@ export class ScriberRecorder {
         ocrWorkerError = error instanceof Error ? error.message : String(error);
       }
     }
+    const getBestOcrWorker = async () => {
+      if (bestOcrWorker || bestOcrWorkerError) {
+        return bestOcrWorker;
+      }
+      try {
+        bestOcrWorker = await createOverlayOcrWorker({
+          langPath: TESSERACT_BEST_ENG_LANG_PATH,
+          oem: TESSERACT_BEST_OEM
+        });
+      } catch (error) {
+        bestOcrWorkerError = error instanceof Error ? error.message : String(error);
+      }
+      return bestOcrWorker;
+    };
+
+    const readOverlayOcr = async (
+      worker: OverlayOcrWorker,
+      imagePath: string,
+      snapshot: Pick<PendingVideoSnapshot, "overlayRect" | "textRect">
+    ) => {
+      const baselineResult = await readOverlayNumberFromScreenshot(
+        worker,
+        imagePath,
+        {
+          overlayRect: snapshot.overlayRect,
+          textRect: snapshot.textRect
+        }
+      );
+      const confidence = baselineResult.confidence ?? 0;
+      if (confidence >= OCR_BEST_MODEL_RETRY_MIN_CONFIDENCE) {
+        return baselineResult;
+      }
+      const bestWorker = await getBestOcrWorker();
+      if (!bestWorker) {
+        return baselineResult;
+      }
+      const bestResult = await readOverlayNumberFromScreenshot(bestWorker, imagePath, {
+        overlayRect: snapshot.overlayRect,
+        textRect: snapshot.textRect
+      });
+      return bestResult.error && bestResult.value === null ? baselineResult : bestResult;
+    };
+
+    const getFrameDistance = (value: number | null, expected: number) => {
+      if (value === null) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(this.normalizeSignedFrameDelta(value - expected));
+    };
+
+    const getSearchScore = (
+      ocrResult: OverlayOcrRawResult | null,
+      expectedVideoFrameMod65536: number
+    ) => {
+      if (!ocrResult || ocrResult.value === null) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const confidence = ocrResult.confidence ?? 0;
+      if (confidence < LOCAL_SEARCH_MIN_CONFIDENCE) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return getFrameDistance(ocrResult.value, expectedVideoFrameMod65536);
+    };
 
     const evaluateOcr = async (currentOutcomes: boolean[]) => {
       const ocrResults: Array<OverlayOcrRawResult | null> = [];
@@ -754,13 +858,10 @@ export class ScriberRecorder {
           ocrResults.push(null);
           continue;
         }
-        const ocrResult = await readOverlayNumberFromScreenshot(
+        const ocrResult = await readOverlayOcr(
           ocrWorker,
           snapshot.screenshotPath,
-          {
-            overlayRect: snapshot.overlayRect,
-            textRect: snapshot.textRect
-          }
+          snapshot
         );
         ocrResults.push(ocrResult);
       }
@@ -768,8 +869,9 @@ export class ScriberRecorder {
     };
 
     let ocrResults = await evaluateOcr(outcomes);
+    let calibrationFrameDelta = 0;
     if (ocrWorker) {
-      const calibrationFrameDelta = this.computeOcrCalibrationFrameDelta(
+      calibrationFrameDelta = this.computeOcrCalibrationFrameDelta(
         ocrResults.map((ocrResult, index) => ({
           value: ocrResult?.value ?? null,
           confidence: ocrResult?.confidence ?? null,
@@ -777,11 +879,104 @@ export class ScriberRecorder {
         }))
       );
       if (Math.abs(calibrationFrameDelta) >= 2) {
+        await cleanupAllScreenshotArtifacts();
         outcomes = await extractFramesFromVideo(
           videoPath,
           buildExtractionRequests(calibrationFrameDelta)
         );
         ocrResults = await evaluateOcr(outcomes);
+      }
+    }
+
+    if (ocrWorker) {
+      for (const [index, snapshot] of snapshots.entries()) {
+        if (!outcomes[index]) {
+          continue;
+        }
+        const expectedFrameInfo = expectedFrames[index] ?? { videoFrameMod65536: 0 };
+        const baselineResult = ocrResults[index] ?? null;
+        if (
+          !baselineResult ||
+          baselineResult.value === null ||
+          (baselineResult.confidence ?? 0) < LOCAL_SEARCH_MIN_CONFIDENCE ||
+          baselineResult.value === expectedFrameInfo.videoFrameMod65536
+        ) {
+          continue;
+        }
+
+        let bestLocalFrameAdjustment = 0;
+        let bestResult = baselineResult;
+        let bestScore = getSearchScore(bestResult, expectedFrameInfo.videoFrameMod65536);
+        let bestConfidence = bestResult?.confidence ?? 0;
+
+        for (
+          let localFrameAdjustment = -LOCAL_SEARCH_RADIUS_FRAMES;
+          localFrameAdjustment <= LOCAL_SEARCH_RADIUS_FRAMES;
+          localFrameAdjustment += 1
+        ) {
+          if (localFrameAdjustment === 0) {
+            continue;
+          }
+          const candidatePath = `${snapshot.screenshotPath}.local_${localFrameAdjustment >= 0 ? "p" : "m"}${Math.abs(localFrameAdjustment)}.png`;
+          await cleanupScreenshotArtifacts(candidatePath);
+          const candidateOutcome = await extractFramesFromVideo(videoPath, [
+            {
+              outputPath: candidatePath,
+              offsetMs: computeOffsetMs(
+                baseOffsetsMs[index] ?? 0,
+                calibrationFrameDelta + localFrameAdjustment
+              )
+            }
+          ]);
+          if (!candidateOutcome[0]) {
+            await cleanupScreenshotArtifacts(candidatePath);
+            continue;
+          }
+          const candidateResult = await readOverlayOcr(
+            ocrWorker,
+            candidatePath,
+            snapshot
+          );
+          const candidateScore = getSearchScore(
+            candidateResult,
+            expectedFrameInfo.videoFrameMod65536
+          );
+          const candidateConfidence = candidateResult.confidence ?? 0;
+          if (
+            candidateScore < bestScore ||
+            (candidateScore === bestScore &&
+              candidateConfidence > bestConfidence &&
+              Math.abs(localFrameAdjustment) < Math.abs(bestLocalFrameAdjustment))
+          ) {
+            bestLocalFrameAdjustment = localFrameAdjustment;
+            bestResult = candidateResult;
+            bestScore = candidateScore;
+            bestConfidence = candidateConfidence;
+          }
+          await cleanupScreenshotArtifacts(candidatePath);
+        }
+
+        if (bestLocalFrameAdjustment !== 0) {
+          await cleanupScreenshotArtifacts(snapshot.screenshotPath);
+          const replacementOutcome = await extractFramesFromVideo(videoPath, [
+            {
+              outputPath: snapshot.screenshotPath,
+              offsetMs: computeOffsetMs(
+                baseOffsetsMs[index] ?? 0,
+                calibrationFrameDelta + bestLocalFrameAdjustment
+              )
+            }
+          ]);
+          const extracted = replacementOutcome[0] ?? false;
+          outcomes[index] = extracted;
+          if (!extracted) {
+            ocrResults[index] = null;
+            continue;
+          }
+          bestResult = await readOverlayOcr(ocrWorker, snapshot.screenshotPath, snapshot);
+        }
+
+        ocrResults[index] = bestResult;
       }
     }
 
@@ -822,13 +1017,18 @@ export class ScriberRecorder {
         error: ocrResult.error
       });
     }
-    if (ocrWorker) {
+    const terminateWorkerSafely = async (worker: OverlayOcrWorker | null) => {
+      if (!worker) {
+        return;
+      }
       try {
-        await ocrWorker.terminate();
+        await worker.terminate();
       } catch {
         // Ignore OCR worker shutdown errors.
       }
-    }
+    };
+    await terminateWorkerSafely(ocrWorker);
+    await terminateWorkerSafely(bestOcrWorker);
   }
 
   private async writeAction(action: ActionRecord) {
