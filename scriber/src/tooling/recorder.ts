@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { performance as nodePerformance } from "node:perf_hooks";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { BrowserContext, Page } from "playwright";
 const require = createRequire(import.meta.url);
@@ -20,19 +20,9 @@ import {
   ActionRecord,
   ActionType,
   OverlayCropRect,
-  OverlayOcrSnapshot,
   SnapshotDescriptor,
   TargetMetadata
 } from "./types.js";
-import {
-  buildOverlayCutPath,
-  createOverlayOcrWorker,
-  readOverlayNumberFromScreenshot,
-  TESSERACT_BEST_ENG_LANG_PATH,
-  TESSERACT_BEST_OEM,
-  type OverlayOcrRawResult
-} from "./overlayOcr.js";
-import { extractFramesFromVideo } from "./video.js";
 
 export interface RecorderSession {
   outputDir: string;
@@ -75,36 +65,16 @@ interface PreActionEvidence {
   domGzip: Buffer;
   pageTitle: string | null;
   url: string;
-  overlayRect: OverlayCropRect | null;
-  textRect: OverlayCropRect | null;
 }
 
-interface PendingVideoSnapshot {
-  action: ActionRecord;
-  descriptor: SnapshotDescriptor;
-  screenshotPath: string;
-  capturedAt: number;
-  overlayRect: OverlayCropRect | null;
-  textRect: OverlayCropRect | null;
-}
-
-interface SnapshotOverlayCapture {
-  overlayRect: OverlayCropRect | null;
-  textRect: OverlayCropRect | null;
-}
-
-interface SnapshotCapturePayload extends SnapshotOverlayCapture {
-  capturedAt: number;
+interface SnapshotCapturePayload {
   html: string;
+  overlayRect: OverlayCropRect | null;
+  textRect: OverlayCropRect | null;
 }
 
 const VIDEO_FRAME_RATE = 30;
 const VIDEO_FRAME_MODULUS = 65536;
-const OCR_CALIBRATION_MIN_CONFIDENCE = 70;
-const OCR_CALIBRATION_MAX_ABS_DELTA_FRAMES = 180;
-const LOCAL_SEARCH_RADIUS_FRAMES = 2;
-const LOCAL_SEARCH_MIN_CONFIDENCE = 70;
-const OCR_BEST_MODEL_RETRY_MIN_CONFIDENCE = 92;
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
 
 export class ScriberRecorder {
@@ -121,7 +91,6 @@ export class ScriberRecorder {
   private stopPrepared = false;
   private pendingTasks = new Set<Promise<void>>();
   private preActionEvidenceByPage = new Map<string, PreActionEvidence>();
-  private pendingVideoSnapshots: PendingVideoSnapshot[] = [];
 
   public readonly playwrightVersion = playwrightVersion;
 
@@ -133,19 +102,14 @@ export class ScriberRecorder {
       onStart: async () => undefined,
       onFlush: async (pending) => {
         const page = this.getPageById(pending.pageId);
-        const frameInfo = this.buildVideoFrameInfo(pending.timestamp);
         const action: ActionRecord = {
           actionId: pending.actionId,
           stepNumber: pending.stepNumber,
           timestamp: pending.timestamp,
+          timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(pending.timestamp),
           actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
-          videoFrame: frameInfo.videoFrame,
-          videoFrameMod65536: frameInfo.videoFrameMod65536,
-          beforeScreenshotFileName: null,
-          atScreenshotFileName: null,
-          afterScreenshotFileName: null,
           pageTitleBefore: null,
           pageTitleAfter: null,
           urlBefore: null,
@@ -206,7 +170,6 @@ export class ScriberRecorder {
 
   private async ensureDirectories() {
     await mkdir(resolve(this.options.outputDir, "dom"), { recursive: true });
-    await mkdir(resolve(this.options.outputDir, "screenshots"), { recursive: true });
   }
 
   private async registerPage(page: Page) {
@@ -327,17 +290,8 @@ export class ScriberRecorder {
     this.stopPrepared = true;
   }
 
-  async finalizeStop({
-    endTimestamp,
-    sessionStartTimestamp,
-    videoPath
-  }: {
-    endTimestamp: string;
-    sessionStartTimestamp: string;
-    videoPath: string | null;
-  }) {
+  async finalizeStop({ endTimestamp }: { endTimestamp: string }) {
     await this.prepareStop();
-    await this.materializeVideoSnapshots(videoPath, sessionStartTimestamp);
     const actionsPath = resolve(this.options.outputDir, "actions.json");
     await writeFile(
       actionsPath,
@@ -377,9 +331,7 @@ export class ScriberRecorder {
         selector: payload.selectors?.primarySelector ?? null,
         domGzip: await gzipHtml(`<!doctype html>${snapshotPayload.html}`),
         pageTitle: await this.safeGetPageTitle(page),
-        url: page.url(),
-        overlayRect: snapshotPayload.overlayRect,
-        textRect: snapshotPayload.textRect
+        url: page.url()
       } as PreActionEvidence;
     } catch {
       return null;
@@ -420,20 +372,6 @@ export class ScriberRecorder {
     await writeFile(domPath, evidence.domGzip);
     action.urlBefore = evidence.url;
     action.pageTitleBefore = evidence.pageTitle;
-    this.registerSnapshotForVideo(
-      action,
-      {
-        actionId: action.actionId,
-        stepNumber: action.stepNumber,
-        pageId,
-        phase: "before"
-      },
-      evidence.capturedAt,
-      {
-        overlayRect: evidence.overlayRect,
-        textRect: evidence.textRect
-      }
-    );
     this.preActionEvidenceByPage.delete(pageId);
     return true;
   }
@@ -534,20 +472,15 @@ export class ScriberRecorder {
     const stepNumber = this.nextStepNumber();
     const pageId = this.getPageId(page);
     const timestamp = new Date().toISOString();
-    const frameInfo = this.buildVideoFrameInfo(timestamp);
 
     const action: ActionRecord = {
       actionId,
       stepNumber,
       timestamp,
+      timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(timestamp),
       actionType: payload.actionType,
       url: payload.url,
       pageId,
-      videoFrame: frameInfo.videoFrame,
-      videoFrameMod65536: frameInfo.videoFrameMod65536,
-      beforeScreenshotFileName: null,
-      atScreenshotFileName: null,
-      afterScreenshotFileName: null,
       pageTitleBefore: null,
       pageTitleAfter: null,
       urlBefore: null,
@@ -635,400 +568,13 @@ export class ScriberRecorder {
   ) {
     try {
       const snapshotCapture = await this.captureSnapshot(page, descriptor);
-      this.registerSnapshotForVideo(
-        action,
-        descriptor,
-        snapshotCapture.capturedAt,
-        {
-          overlayRect: snapshotCapture.overlayRect,
-          textRect: snapshotCapture.textRect
-        }
-      );
+      if (descriptor.phase === "at") {
+        action.overlayRect = snapshotCapture.overlayRect;
+        action.ocrCropRect = snapshotCapture.textRect ?? snapshotCapture.overlayRect;
+      }
     } catch {
       // Ignore snapshot errors (e.g., page closed).
     }
-  }
-
-  private setScreenshotFileName(
-    action: ActionRecord,
-    phase: SnapshotDescriptor["phase"],
-    fileName: string | null
-  ) {
-    if (phase === "before") {
-      action.beforeScreenshotFileName = fileName;
-      return;
-    }
-    if (phase === "at") {
-      action.atScreenshotFileName = fileName;
-      return;
-    }
-    action.afterScreenshotFileName = fileName;
-  }
-
-  private setOverlayOcrSnapshot(
-    action: ActionRecord,
-    phase: SnapshotDescriptor["phase"],
-    overlayOcr: OverlayOcrSnapshot
-  ) {
-    if (!action.overlayOcr) {
-      action.overlayOcr = {};
-    }
-    action.overlayOcr[phase] = overlayOcr;
-  }
-
-  private registerSnapshotForVideo(
-    action: ActionRecord,
-    descriptor: SnapshotDescriptor,
-    capturedAt: number,
-    overlayCapture: SnapshotOverlayCapture
-  ) {
-    const screenshotPath = snapshotPath(
-      this.options.outputDir,
-      "screenshots",
-      descriptor.stepNumber,
-      descriptor.actionId,
-      descriptor.phase,
-      "png"
-    );
-    this.setScreenshotFileName(action, descriptor.phase, basename(screenshotPath));
-    this.pendingVideoSnapshots.push({
-      action,
-      descriptor,
-      screenshotPath,
-      capturedAt,
-      overlayRect: overlayCapture.overlayRect,
-      textRect: overlayCapture.textRect
-    });
-  }
-
-  private async materializeVideoSnapshots(
-    videoPath: string | null,
-    sessionStartTimestamp: string
-  ) {
-    if (this.pendingVideoSnapshots.length === 0) {
-      return;
-    }
-    if (!videoPath) {
-      for (const snapshot of this.pendingVideoSnapshots) {
-        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
-      }
-      return;
-    }
-    const sessionStartMs = new Date(sessionStartTimestamp).getTime();
-    if (!Number.isFinite(sessionStartMs)) {
-      for (const snapshot of this.pendingVideoSnapshots) {
-        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
-      }
-      return;
-    }
-
-    const snapshots = [...this.pendingVideoSnapshots].sort(
-      (left, right) => left.capturedAt - right.capturedAt
-    );
-    const frameAdjustmentToMs = (frameAdjustment: number) =>
-      (frameAdjustment * 1000) / VIDEO_FRAME_RATE;
-    const computeOffsetMs = (baseOffsetMs: number, frameAdjustment: number) =>
-      Math.max(0, baseOffsetMs - frameAdjustmentToMs(frameAdjustment));
-    const getSnapshotTargetTimeMs = (snapshot: PendingVideoSnapshot) => {
-      const actionTimeMs = new Date(snapshot.action.timestamp).getTime();
-      if (!Number.isFinite(actionTimeMs)) {
-        return snapshot.capturedAt;
-      }
-      const phaseOffsetMs =
-        snapshot.descriptor.phase === "before"
-          ? -300
-          : snapshot.descriptor.phase === "after"
-            ? 800
-            : 0;
-      return actionTimeMs + phaseOffsetMs;
-    };
-    const cleanupScreenshotArtifacts = async (screenshotPath: string) => {
-      await Promise.allSettled([
-        unlink(screenshotPath),
-        unlink(buildOverlayCutPath(screenshotPath))
-      ]);
-    };
-    const cleanupAllScreenshotArtifacts = async () => {
-      await Promise.all(
-        snapshots.map((snapshot) => cleanupScreenshotArtifacts(snapshot.screenshotPath))
-      );
-    };
-
-    const targetCaptureTimesMs = snapshots.map((snapshot) =>
-      getSnapshotTargetTimeMs(snapshot)
-    );
-    const baseOffsetsMs = targetCaptureTimesMs.map((targetTimeMs) =>
-      Math.max(0, targetTimeMs - sessionStartMs)
-    );
-
-    const buildExtractionRequests = (frameAdjustment = 0) =>
-      snapshots.map((snapshot, index) => ({
-        outputPath: snapshot.screenshotPath,
-        offsetMs: computeOffsetMs(baseOffsetsMs[index] ?? 0, frameAdjustment)
-      }));
-
-    await cleanupAllScreenshotArtifacts();
-    let outcomes = await extractFramesFromVideo(videoPath, buildExtractionRequests(0));
-    type OverlayOcrWorker = Awaited<ReturnType<typeof createOverlayOcrWorker>>;
-    let ocrWorker: OverlayOcrWorker | null = null;
-    let ocrWorkerError: string | null = null;
-    let bestOcrWorker: OverlayOcrWorker | null = null;
-    let bestOcrWorkerError: string | null = null;
-    const expectedFrames = targetCaptureTimesMs.map((targetTimeMs) =>
-      this.buildVideoFrameInfoFromMs(targetTimeMs, sessionStartMs)
-    );
-    if (!ocrWorker && !ocrWorkerError) {
-      try {
-        ocrWorker = await createOverlayOcrWorker();
-      } catch (error) {
-        ocrWorkerError = error instanceof Error ? error.message : String(error);
-      }
-    }
-    const getBestOcrWorker = async () => {
-      if (bestOcrWorker || bestOcrWorkerError) {
-        return bestOcrWorker;
-      }
-      try {
-        bestOcrWorker = await createOverlayOcrWorker({
-          langPath: TESSERACT_BEST_ENG_LANG_PATH,
-          oem: TESSERACT_BEST_OEM
-        });
-      } catch (error) {
-        bestOcrWorkerError = error instanceof Error ? error.message : String(error);
-      }
-      return bestOcrWorker;
-    };
-
-    const readOverlayOcr = async (
-      worker: OverlayOcrWorker,
-      imagePath: string,
-      snapshot: Pick<PendingVideoSnapshot, "overlayRect" | "textRect">
-    ) => {
-      const baselineResult = await readOverlayNumberFromScreenshot(
-        worker,
-        imagePath,
-        {
-          overlayRect: snapshot.overlayRect,
-          textRect: snapshot.textRect
-        }
-      );
-      const confidence = baselineResult.confidence ?? 0;
-      if (confidence >= OCR_BEST_MODEL_RETRY_MIN_CONFIDENCE) {
-        return baselineResult;
-      }
-      const bestWorker = await getBestOcrWorker();
-      if (!bestWorker) {
-        return baselineResult;
-      }
-      const bestResult = await readOverlayNumberFromScreenshot(bestWorker, imagePath, {
-        overlayRect: snapshot.overlayRect,
-        textRect: snapshot.textRect
-      });
-      return bestResult.error && bestResult.value === null ? baselineResult : bestResult;
-    };
-
-    const getFrameDistance = (value: number | null, expected: number) => {
-      if (value === null) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.abs(this.normalizeSignedFrameDelta(value - expected));
-    };
-
-    const getSearchScore = (
-      ocrResult: OverlayOcrRawResult | null,
-      expectedVideoFrameMod65536: number
-    ) => {
-      if (!ocrResult || ocrResult.value === null) {
-        return Number.POSITIVE_INFINITY;
-      }
-      const confidence = ocrResult.confidence ?? 0;
-      if (confidence < LOCAL_SEARCH_MIN_CONFIDENCE) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return getFrameDistance(ocrResult.value, expectedVideoFrameMod65536);
-    };
-
-    const evaluateOcr = async (currentOutcomes: boolean[]) => {
-      const ocrResults: Array<OverlayOcrRawResult | null> = [];
-      if (!ocrWorker) {
-        return ocrResults;
-      }
-      for (const [index, snapshot] of snapshots.entries()) {
-        if (!currentOutcomes[index]) {
-          ocrResults.push(null);
-          continue;
-        }
-        const ocrResult = await readOverlayOcr(
-          ocrWorker,
-          snapshot.screenshotPath,
-          snapshot
-        );
-        ocrResults.push(ocrResult);
-      }
-      return ocrResults;
-    };
-
-    let ocrResults = await evaluateOcr(outcomes);
-    let calibrationFrameDelta = 0;
-    if (ocrWorker) {
-      calibrationFrameDelta = this.computeOcrCalibrationFrameDelta(
-        ocrResults.map((ocrResult, index) => ({
-          value: ocrResult?.value ?? null,
-          confidence: ocrResult?.confidence ?? null,
-          expectedVideoFrameMod65536: expectedFrames[index]?.videoFrameMod65536 ?? 0
-        }))
-      );
-      if (Math.abs(calibrationFrameDelta) >= 2) {
-        await cleanupAllScreenshotArtifacts();
-        outcomes = await extractFramesFromVideo(
-          videoPath,
-          buildExtractionRequests(calibrationFrameDelta)
-        );
-        ocrResults = await evaluateOcr(outcomes);
-      }
-    }
-
-    if (ocrWorker) {
-      for (const [index, snapshot] of snapshots.entries()) {
-        if (!outcomes[index]) {
-          continue;
-        }
-        const expectedFrameInfo = expectedFrames[index] ?? { videoFrameMod65536: 0 };
-        const baselineResult = ocrResults[index] ?? null;
-        if (
-          !baselineResult ||
-          baselineResult.value === null ||
-          (baselineResult.confidence ?? 0) < LOCAL_SEARCH_MIN_CONFIDENCE ||
-          baselineResult.value === expectedFrameInfo.videoFrameMod65536
-        ) {
-          continue;
-        }
-
-        let bestLocalFrameAdjustment = 0;
-        let bestResult = baselineResult;
-        let bestScore = getSearchScore(bestResult, expectedFrameInfo.videoFrameMod65536);
-        let bestConfidence = bestResult?.confidence ?? 0;
-
-        for (
-          let localFrameAdjustment = -LOCAL_SEARCH_RADIUS_FRAMES;
-          localFrameAdjustment <= LOCAL_SEARCH_RADIUS_FRAMES;
-          localFrameAdjustment += 1
-        ) {
-          if (localFrameAdjustment === 0) {
-            continue;
-          }
-          const candidatePath = `${snapshot.screenshotPath}.local_${localFrameAdjustment >= 0 ? "p" : "m"}${Math.abs(localFrameAdjustment)}.png`;
-          await cleanupScreenshotArtifacts(candidatePath);
-          const candidateOutcome = await extractFramesFromVideo(videoPath, [
-            {
-              outputPath: candidatePath,
-              offsetMs: computeOffsetMs(
-                baseOffsetsMs[index] ?? 0,
-                calibrationFrameDelta + localFrameAdjustment
-              )
-            }
-          ]);
-          if (!candidateOutcome[0]) {
-            await cleanupScreenshotArtifacts(candidatePath);
-            continue;
-          }
-          const candidateResult = await readOverlayOcr(
-            ocrWorker,
-            candidatePath,
-            snapshot
-          );
-          const candidateScore = getSearchScore(
-            candidateResult,
-            expectedFrameInfo.videoFrameMod65536
-          );
-          const candidateConfidence = candidateResult.confidence ?? 0;
-          if (
-            candidateScore < bestScore ||
-            (candidateScore === bestScore &&
-              candidateConfidence > bestConfidence &&
-              Math.abs(localFrameAdjustment) < Math.abs(bestLocalFrameAdjustment))
-          ) {
-            bestLocalFrameAdjustment = localFrameAdjustment;
-            bestResult = candidateResult;
-            bestScore = candidateScore;
-            bestConfidence = candidateConfidence;
-          }
-          await cleanupScreenshotArtifacts(candidatePath);
-        }
-
-        if (bestLocalFrameAdjustment !== 0) {
-          await cleanupScreenshotArtifacts(snapshot.screenshotPath);
-          const replacementOutcome = await extractFramesFromVideo(videoPath, [
-            {
-              outputPath: snapshot.screenshotPath,
-              offsetMs: computeOffsetMs(
-                baseOffsetsMs[index] ?? 0,
-                calibrationFrameDelta + bestLocalFrameAdjustment
-              )
-            }
-          ]);
-          const extracted = replacementOutcome[0] ?? false;
-          outcomes[index] = extracted;
-          if (!extracted) {
-            ocrResults[index] = null;
-            continue;
-          }
-          bestResult = await readOverlayOcr(ocrWorker, snapshot.screenshotPath, snapshot);
-        }
-
-        ocrResults[index] = bestResult;
-      }
-    }
-
-    for (const [index, snapshot] of snapshots.entries()) {
-      if (!outcomes[index]) {
-        this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
-        continue;
-      }
-      const expectedFrameInfo = expectedFrames[index] ?? { videoFrameMod65536: 0 };
-      const ocrResult = ocrResults[index] ?? null;
-      if (!ocrResult) {
-        const candidateCropRect = snapshot.textRect ?? snapshot.overlayRect;
-        this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
-          value: null,
-          text: null,
-          confidence: null,
-          cutScreenshotFileName: null,
-          overlayRect: snapshot.overlayRect,
-          ocrCropRect: candidateCropRect,
-          expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
-          matchesExpected: null,
-          error: ocrWorkerError ?? "OCR worker unavailable"
-        });
-        continue;
-      }
-      this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
-        value: ocrResult.value,
-        text: ocrResult.text,
-        confidence: ocrResult.confidence,
-        cutScreenshotFileName: ocrResult.cutScreenshotFileName,
-        overlayRect: ocrResult.overlayRect,
-        ocrCropRect: ocrResult.cropRect,
-        expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
-        matchesExpected:
-          ocrResult.value === null
-            ? null
-            : ocrResult.value === expectedFrameInfo.videoFrameMod65536,
-        error: ocrResult.error
-      });
-    }
-    const terminateWorkerSafely = async (worker: OverlayOcrWorker | null) => {
-      if (!worker) {
-        return;
-      }
-      try {
-        await worker.terminate();
-      } catch {
-        // Ignore OCR worker shutdown errors.
-      }
-    };
-    await terminateWorkerSafely(ocrWorker);
-    await terminateWorkerSafely(bestOcrWorker);
   }
 
   private async writeAction(action: ActionRecord) {
@@ -1109,7 +655,6 @@ export class ScriberRecorder {
 
   private async captureSnapshotPayload(page: Page): Promise<SnapshotCapturePayload> {
     return await page.evaluate(() => {
-      const capturedAt = performance.timeOrigin + performance.now();
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
       const inputs = clone.querySelectorAll("input");
       inputs.forEach((input) => {
@@ -1194,7 +739,6 @@ export class ScriberRecorder {
       }
 
       return {
-        capturedAt,
         html: clone.outerHTML,
         overlayRect,
         textRect
@@ -1207,70 +751,13 @@ export class ScriberRecorder {
     return this.stepNumber;
   }
 
-  private buildVideoFrameInfo(timestamp: string) {
+  private buildTimeSinceVideoStartNs(timestamp: string) {
     const actionTimeMs = new Date(timestamp).getTime();
-    return this.buildVideoFrameInfoFromMs(actionTimeMs, this.sessionStartMs);
-  }
-
-  private buildVideoFrameInfoFromMs(actionTimeMs: number, sessionStartMs: number) {
-    if (!Number.isFinite(actionTimeMs) || !Number.isFinite(sessionStartMs)) {
-      return { videoFrame: 0, videoFrameMod65536: 0 };
-    }
-    const elapsedMs = Math.max(0, actionTimeMs - sessionStartMs);
-    const videoFrame = Math.floor((elapsedMs * VIDEO_FRAME_RATE) / 1000);
-    return {
-      videoFrame,
-      videoFrameMod65536: videoFrame % VIDEO_FRAME_MODULUS
-    };
-  }
-
-  private normalizeSignedFrameDelta(frameDelta: number) {
-    const halfModulus = VIDEO_FRAME_MODULUS / 2;
-    return (
-      (((frameDelta + halfModulus) % VIDEO_FRAME_MODULUS) + VIDEO_FRAME_MODULUS) %
-        VIDEO_FRAME_MODULUS -
-      halfModulus
-    );
-  }
-
-  private computeOcrCalibrationFrameDelta(
-    samples: Array<{
-      value: number | null;
-      confidence: number | null;
-      expectedVideoFrameMod65536: number;
-    }>
-  ) {
-    const deltas = samples
-      .flatMap((sample) => {
-        if (sample.value === null) {
-          return [];
-        }
-        const confidence = sample.confidence ?? 0;
-        if (confidence < OCR_CALIBRATION_MIN_CONFIDENCE) {
-          return [];
-        }
-        const delta = this.normalizeSignedFrameDelta(
-          sample.value - sample.expectedVideoFrameMod65536
-        );
-        if (Math.abs(delta) > OCR_CALIBRATION_MAX_ABS_DELTA_FRAMES) {
-          return [];
-        }
-        return [delta];
-      })
-      .sort((left, right) => left - right);
-
-    if (deltas.length === 0) {
+    if (!Number.isFinite(actionTimeMs) || !Number.isFinite(this.sessionStartMs)) {
       return 0;
     }
-
-    const middle = Math.floor(deltas.length / 2);
-    if (deltas.length % 2 === 1) {
-      return deltas[middle] ?? 0;
-    }
-
-    const left = deltas[middle - 1] ?? 0;
-    const right = deltas[middle] ?? 0;
-    return Math.round((left + right) / 2);
+    const elapsedMs = Math.max(0, actionTimeMs - this.sessionStartMs);
+    return Math.round(elapsedMs * 1_000_000);
   }
 
   private getPageId(page: Page) {

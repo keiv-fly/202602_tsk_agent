@@ -85,9 +85,9 @@ export const buildNarrationRecords = (actions: ActionRecord[]): NarrationRecord[
           visibleText: trimText(action.target?.text)
         },
         evidence: {
-          beforeShot: action.beforeScreenshotFileName,
-          atShot: action.atScreenshotFileName,
-          afterShot: action.afterScreenshotFileName,
+          beforeShot: null,
+          atShot: null,
+          afterShot: null,
           titleBefore: action.pageTitleBefore,
           titleAfter: action.pageTitleAfter,
           urlBefore: action.urlBefore,

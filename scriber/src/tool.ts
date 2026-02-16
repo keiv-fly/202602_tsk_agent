@@ -199,7 +199,6 @@ export const startTool = async (
     const endTimestamp = new Date().toISOString();
     await recorder.prepareStop();
     let contextCloseError: string | null = null;
-    let finalizedVideoPath: string | null = null;
     try {
       await context.close();
     } catch (error) {
@@ -210,21 +209,16 @@ export const startTool = async (
     if (pageVideo) {
       try {
         await pageVideo.saveAs(videoPath);
-        finalizedVideoPath = videoPath;
         await pageVideo.delete();
       } catch (error) {
         // No video frames (e.g. very short session) — skip save and cleanup
         saveAsError = error instanceof Error ? error.message : String(error);
       }
     }
-    if (!finalizedVideoPath) {
-      finalizedVideoPath = await resolveExistingVideoPath(outputDir);
-    }
+    await resolveExistingVideoPath(outputDir);
 
     await recorder.finalizeStop({
-      endTimestamp,
-      sessionStartTimestamp,
-      videoPath: finalizedVideoPath
+      endTimestamp
     });
 
     const finalMeta: SessionMeta = { ...meta, endTimestamp };

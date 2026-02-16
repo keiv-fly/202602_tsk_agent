@@ -63,23 +63,16 @@ export interface ActionRecord extends SelectorInfo {
   actionId: string;
   stepNumber: number;
   timestamp: string;
+  timeSinceVideoStartNs: number;
   actionType: ActionType;
   url: string;
   pageId: string;
-  videoFrame: number;
-  videoFrameMod65536: number;
-  beforeScreenshotFileName: string | null;
-  atScreenshotFileName: string | null;
-  afterScreenshotFileName: string | null;
   pageTitleBefore: string | null;
   pageTitleAfter: string | null;
   urlBefore: string | null;
   urlAfter: string | null;
-  overlayOcr?: {
-    before?: OverlayOcrSnapshot;
-    at?: OverlayOcrSnapshot;
-    after?: OverlayOcrSnapshot;
-  };
+  overlayRect?: OverlayCropRect | null;
+  ocrCropRect?: OverlayCropRect | null;
   target?: TargetMetadata;
   details?: Record<string, unknown>;
 }
@@ -89,18 +82,6 @@ export interface OverlayCropRect {
   top: number;
   width: number;
   height: number;
-}
-
-export interface OverlayOcrSnapshot {
-  value: number | null;
-  text: string | null;
-  confidence: number | null;
-  cutScreenshotFileName: string | null;
-  overlayRect: OverlayCropRect | null;
-  ocrCropRect: OverlayCropRect | null;
-  expectedVideoFrameMod65536: number;
-  matchesExpected: boolean | null;
-  error: string | null;
 }
 
 export interface SnapshotDescriptor {
