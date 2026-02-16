@@ -1,4 +1,4 @@
-import { createInterface } from "node:readline";
+import { createInterface, emitKeypressEvents } from "node:readline";
 
 import { startTool } from "./tool.js";
 
@@ -31,16 +31,19 @@ const main = async () => {
     `Scriber started (${command}). Browser: ${result.browserVersion}. Session: ${result.sessionId}`
   );
   console.log("Close the browser window to stop and save recording.");
-  console.log("Press Ctrl+C only if browser is still open.");
+  console.log("Press q to stop and save recording before closing the browser.");
 
   let shutdownPromise: Promise<void> | null = null;
-  const stopAndExit = (signal: NodeJS.Signals) => {
+  const stopAndExit = (reason: string) => {
     if (shutdownPromise) {
       return shutdownPromise;
     }
-    const debugRunId = `stop-${Date.now()}`;
+    process.stdin.removeListener("keypress", onKeypress);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
     shutdownPromise = (async () => {
-      process.stdout.write(`\nReceived ${signal}. Saving session...\n`);
+      process.stdout.write(`\nStopping recorder (${reason}). Saving session...\n`);
       try {
         await result.stop();
         process.stdout.write("Session saved. Exiting.\n");
@@ -59,16 +62,25 @@ const main = async () => {
     return shutdownPromise;
   };
 
-  process.on("SIGINT", () => {
-    void stopAndExit("SIGINT");
-  });
-  process.on("SIGTERM", () => {
-    void stopAndExit("SIGTERM");
-  });
+  const onKeypress = (_value: string, key?: { name?: string; ctrl?: boolean }) => {
+    if (key?.ctrl && key.name === "c") {
+      process.kill(process.pid, "SIGINT");
+      return;
+    }
+    if (key?.name?.toLowerCase() === "q") {
+      void stopAndExit("q pressed");
+    }
+  };
+
+  if (process.stdin.isTTY) {
+    emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("keypress", onKeypress);
+  }
 
   result.page.context().browser()?.on("disconnected", () => {
-
-    void stopAndExit("SIGTERM");
+    void stopAndExit("browser closed");
   });
 };
 
