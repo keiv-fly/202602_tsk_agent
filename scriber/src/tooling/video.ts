@@ -22,8 +22,12 @@ export const extractFramesFromVideo = async (
   videoPath: string,
   requests: VideoFrameExtractionRequest[]
 ) => {
+  const runId = `extract-${Date.now()}`;
+
   const outcomes: boolean[] = [];
-  for (const request of requests) {
+  let successCount = 0;
+  let failureCount = 0;
+  for (const [index, request] of requests.entries()) {
     const offsetSeconds = Math.max(0, request.offsetMs) / 1000;
     const offset = offsetSeconds.toFixed(3);
     try {
@@ -41,8 +45,14 @@ export const extractFramesFromVideo = async (
         request.outputPath
       ]);
       outcomes.push(extracted);
+      if (extracted) {
+        successCount += 1;
+      } else {
+        failureCount += 1;
+      }
     } catch {
       outcomes.push(false);
+      failureCount += 1;
     }
   }
   return outcomes;

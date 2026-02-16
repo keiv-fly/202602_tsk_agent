@@ -197,29 +197,35 @@ export const startTool = async (
   const stop = async () => {
     const endTimestamp = new Date().toISOString();
     await recorder.prepareStop();
+    let contextCloseError: string | null = null;
     let finalizedVideoPath: string | null = null;
     try {
       await context.close();
-    } catch {
+    } catch (error) {
       // The browser/window may have been closed manually before stop().
+      contextCloseError = error instanceof Error ? error.message : String(error);
     }
+    let saveAsError: string | null = null;
     if (pageVideo) {
       try {
         await pageVideo.saveAs(videoPath);
         finalizedVideoPath = videoPath;
         await pageVideo.delete();
-      } catch {
+      } catch (error) {
         // No video frames (e.g. very short session) — skip save and cleanup
+        saveAsError = error instanceof Error ? error.message : String(error);
       }
     }
     if (!finalizedVideoPath) {
       finalizedVideoPath = await resolveExistingVideoPath(outputDir);
     }
+
     await recorder.finalizeStop({
       endTimestamp,
       sessionStartTimestamp: startTimestamp,
       videoPath: finalizedVideoPath
     });
+
     const finalMeta: SessionMeta = { ...meta, endTimestamp };
     await writeFile(
       resolve(outputDir, "meta.json"),

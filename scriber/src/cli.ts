@@ -30,13 +30,15 @@ const main = async () => {
   console.log(
     `Scriber started (${command}). Browser: ${result.browserVersion}. Session: ${result.sessionId}`
   );
-  console.log("Press Ctrl+C to stop recording.");
+  console.log("Close the browser window to stop and save recording.");
+  console.log("Press Ctrl+C only if browser is still open.");
 
   let shutdownPromise: Promise<void> | null = null;
   const stopAndExit = (signal: NodeJS.Signals) => {
     if (shutdownPromise) {
       return shutdownPromise;
     }
+    const debugRunId = `stop-${Date.now()}`;
     shutdownPromise = (async () => {
       process.stdout.write(`\nReceived ${signal}. Saving session...\n`);
       try {
@@ -57,10 +59,15 @@ const main = async () => {
     return shutdownPromise;
   };
 
-  process.once("SIGINT", () => {
+  process.on("SIGINT", () => {
     void stopAndExit("SIGINT");
   });
-  process.once("SIGTERM", () => {
+  process.on("SIGTERM", () => {
+    void stopAndExit("SIGTERM");
+  });
+
+  result.page.context().browser()?.on("disconnected", () => {
+
     void stopAndExit("SIGTERM");
   });
 };
