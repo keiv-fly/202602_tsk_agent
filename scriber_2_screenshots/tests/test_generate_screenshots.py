@@ -6,7 +6,9 @@ from scriber_2_screenshots.generate_screenshots import (
     determine_crop_rect,
     extract_ms_from_ocr_data,
     find_frame_index,
+    parse_args,
     process_session,
+    resolve_session_dirs,
 )
 
 
@@ -93,3 +95,24 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     assert (analytics / "actions.json").exists()
     assert (analytics / "ocr_ms_per_frame.txt").read_text(encoding="utf-8").strip() == "1000"
     assert (analytics / "screenshots" / "x_before.png").exists()
+
+
+def test_parse_args_defaults_to_last_mode() -> None:
+    args = parse_args([])
+    assert args.sessions_dir == Path("sessions")
+    assert args.last is True
+
+
+def test_parse_args_all_mode_and_sessions_dir_positional() -> None:
+    args = parse_args(["my_sessions", "--all"])
+    assert args.sessions_dir == Path("my_sessions")
+    assert args.last is False
+
+
+def test_resolve_session_dirs_returns_only_last_when_requested(tmp_path: Path) -> None:
+    sessions_dir = tmp_path / "sessions"
+    (sessions_dir / "20260216_a").mkdir(parents=True)
+    (sessions_dir / "20260216_b").mkdir(parents=True)
+
+    selected = resolve_session_dirs(sessions_dir, use_last=True)
+    assert selected == [sessions_dir / "20260216_b"]

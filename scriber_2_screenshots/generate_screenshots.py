@@ -204,21 +204,43 @@ def process_session(session_dir: Path, min_confidence: float) -> None:
     save_actions(updated_actions, analytics_dir / "actions.json")
 
 
-def parse_args() -> argparse.Namespace:
+def resolve_session_dirs(sessions_dir: Path, use_last: bool) -> list[Path]:
+    session_dirs = sorted((p for p in sessions_dir.iterdir() if p.is_dir()), key=lambda p: p.name)
+    if not session_dirs:
+        raise RuntimeError(f"No session directories found in: {sessions_dir}")
+    return [session_dirs[-1]] if use_last else session_dirs
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create analytics outputs and screenshots from Scriber sessions.")
     parser.add_argument(
-        "--sessions-dir",
+        "sessions_dir",
         type=Path,
+        nargs="?",
         default=Path("sessions"),
         help="Path to the sessions directory.",
     )
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--last",
+        action="store_true",
+        dest="last",
+        help="Process only the last session directory (default).",
+    )
+    mode_group.add_argument(
+        "--all",
+        action="store_false",
+        dest="last",
+        help="Process all session directories.",
+    )
+    parser.set_defaults(last=True)
     parser.add_argument(
         "--min-confidence",
         type=float,
         default=DEFAULT_OCR_CONFIDENCE_THRESHOLD,
         help="Minimum OCR confidence required for frame ms values.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main() -> None:
@@ -227,7 +249,8 @@ def main() -> None:
     if not sessions_dir.exists():
         raise RuntimeError(f"Sessions directory does not exist: {sessions_dir}")
 
-    for session_dir in sorted(p for p in sessions_dir.iterdir() if p.is_dir()):
+    for session_dir in resolve_session_dirs(sessions_dir, use_last=args.last):
+        print(f"Session directory: {session_dir.name}")
         process_session(session_dir, min_confidence=args.min_confidence)
 
 
