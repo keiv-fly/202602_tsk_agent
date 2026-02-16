@@ -73,8 +73,6 @@ interface SnapshotCapturePayload {
   textRect: OverlayCropRect | null;
 }
 
-const VIDEO_FRAME_RATE = 30;
-const VIDEO_FRAME_MODULUS = 65536;
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
 const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
   const byStep = left.stepNumber - right.stepNumber;
@@ -171,7 +169,7 @@ export class ScriberRecorder {
     this.context = context;
     await this.ensureDirectories();
     await context.addInitScript({
-      content: createInitScript(this.sessionStartMs, VIDEO_FRAME_RATE, VIDEO_FRAME_MODULUS)
+      content: createInitScript(this.sessionStartMs)
     });
     context.on("page", (page) => {
       void this.registerPage(page);
@@ -806,15 +804,11 @@ interface RecorderPayload {
   details?: Record<string, unknown>;
 }
 
-const createInitScript = (
-  sessionStartMs: number,
-  frameRate: number,
-  frameModulus: number
-) => `
+const createInitScript = (sessionStartMs: number) => `
 (() => {
   const SCRIBER_SESSION_START_MS = ${sessionStartMs};
-  const SCRIBER_VIDEO_FRAME_RATE = ${frameRate};
-  const SCRIBER_VIDEO_FRAME_MODULUS = ${frameModulus};
+  const SCRIBER_OVERLAY_MAX_MS = 999999;
+  const SCRIBER_NS_PER_MS = 1_000_000;
 
   const getEpochMs = () => performance.timeOrigin + performance.now();
 
@@ -922,12 +916,18 @@ const createInitScript = (
 
   const normalizeName = (value) => value?.replace(/\s+/g, ' ').trim();
 
-  const getVideoFrame = (timestampMs) => {
+  const getElapsedNs = (timestampMs) => {
     if (!Number.isFinite(timestampMs)) {
       return 0;
     }
     const elapsedMs = Math.max(0, timestampMs - SCRIBER_SESSION_START_MS);
-    return Math.floor((elapsedMs * SCRIBER_VIDEO_FRAME_RATE) / 1000);
+    return Math.floor(elapsedMs * SCRIBER_NS_PER_MS);
+  };
+
+  const getOverlayMs = (timestampMs) => {
+    const elapsedNs = getElapsedNs(timestampMs);
+    const elapsedMs = Math.floor(elapsedNs / SCRIBER_NS_PER_MS);
+    return Math.min(elapsedMs, SCRIBER_OVERLAY_MAX_MS);
   };
 
   let frameOverlay = null;
@@ -946,22 +946,26 @@ const createInitScript = (
     }
     frameOverlay = document.createElement('div');
     frameOverlay.id = '__scriberFrameOverlay';
+    frameOverlay.className = 'ocr-digits';
     frameOverlay.setAttribute('aria-hidden', 'true');
     frameOverlay.style.display = 'inline-block';
     frameOverlay.style.position = 'fixed';
     frameOverlay.style.top = '6px';
     frameOverlay.style.left = '6px';
-    frameOverlay.style.width = '5ch';
-    frameOverlay.style.padding = '0 2px';
+    frameOverlay.style.width = '6ch';
+    frameOverlay.style.padding = '2.4px 4.8px';
     frameOverlay.style.textAlign = 'right';
-    frameOverlay.style.border = '2px solid #ff0';
-    frameOverlay.style.borderRadius = '0';
-    frameOverlay.style.background = '#000';
-    frameOverlay.style.color = '#fff';
-    frameOverlay.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    frameOverlay.style.fontSize = '12px';
+    frameOverlay.style.border = '3px solid #ffff00';
+    frameOverlay.style.backgroundColor = '#000000';
+    frameOverlay.style.color = '#FFFFFF';
+    frameOverlay.style.fontFamily = '"Roboto Mono", monospace';
+    frameOverlay.style.fontWeight = '700';
+    frameOverlay.style.fontSize = '21.6px';
     frameOverlay.style.lineHeight = '1';
-    frameOverlay.style.fontVariantNumeric = 'tabular-nums';
+    frameOverlay.style.letterSpacing = '0.06em';
+    frameOverlay.style.fontVariantNumeric = 'tabular-nums lining-nums';
+    frameOverlay.style.webkitTextStroke = '1px #000000';
+    frameOverlay.style.textShadow = '1px 0 #000, -1px 0 #000, 0 1px #000, 0 -1px #000';
     frameOverlay.style.pointerEvents = 'none';
     frameOverlay.style.userSelect = 'none';
     frameOverlay.style.zIndex = '2147483647';
@@ -974,8 +978,8 @@ const createInitScript = (
     if (!overlay) {
       return;
     }
-    const frame = getVideoFrame(getEpochMs());
-    overlay.textContent = String(frame % SCRIBER_VIDEO_FRAME_MODULUS);
+    const elapsedMs = getOverlayMs(getEpochMs());
+    overlay.textContent = String(elapsedMs);
   };
 
   const startFrameOverlayLoop = () => {
@@ -983,7 +987,7 @@ const createInitScript = (
       updateFrameOverlay();
       window.requestAnimationFrame(tick);
     };
-    tick();
+    window.requestAnimationFrame(tick);
   };
   startFrameOverlayLoop();
 

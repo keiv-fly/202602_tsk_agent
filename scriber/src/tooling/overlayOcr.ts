@@ -105,12 +105,15 @@ export const parseOverlayDigits = (input: string | null | undefined) => {
     return null;
   }
   const normalized = input.replace(/\s+/g, "");
-  const match = normalized.match(/\d{1,5}/);
+  const match = normalized.match(/\d+/);
   if (!match) {
     return null;
   }
+  if (match[0].length > 6) {
+    return null;
+  }
   const parsed = Number.parseInt(match[0], 10);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 65535) {
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 999999) {
     return null;
   }
   return parsed;

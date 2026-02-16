@@ -59,7 +59,7 @@ describe("scriber integration", () => {
     expect(actionsJson).toEqual(sortedActions);
   });
 
-  it("renders a top-left frame modulo overlay for the session", async () => {
+  it("renders a top-left elapsed-ms overlay for the session", async () => {
     const outputDir = await mkdtemp(resolve(tmpdir(), "scriber-session-"));
     const result = await startTool({
       headless: true,
@@ -79,23 +79,38 @@ describe("scriber integration", () => {
         top: element.style.top,
         left: element.style.left,
         width: element.style.width,
-        textAlign: element.style.textAlign,
+        fontFamily: element.style.fontFamily,
+        fontWeight: element.style.fontWeight,
+        fontSize: element.style.fontSize,
+        lineHeight: element.style.lineHeight,
+        letterSpacing: element.style.letterSpacing,
+        padding: element.style.padding,
         border: element.style.border,
-        borderRadius: element.style.borderRadius,
-        background: element.style.background
+        webkitTextStroke: element.style.webkitTextStroke,
+        textShadow: element.style.textShadow,
+        textAlign: element.style.textAlign,
+        backgroundColor: element.style.backgroundColor
       };
     });
 
     expect(overlay).toBeTruthy();
-    expect(overlay?.text).toMatch(/^\d{1,5}$/);
+    expect(overlay?.text).toMatch(/^\d{1,6}$/);
     expect(overlay?.position).toBe("fixed");
     expect(overlay?.top).toBe("6px");
     expect(overlay?.left).toBe("6px");
-    expect(overlay?.width).toBe("5ch");
+    expect(overlay?.width).toBe("6ch");
+    expect(overlay?.fontFamily).toBe('"Roboto Mono", monospace');
+    expect(overlay?.fontWeight).toBe("700");
+    expect(overlay?.fontSize).toBe("21.6px");
+    expect(overlay?.lineHeight).toBe("1");
+    expect(overlay?.letterSpacing).toBe("0.06em");
+    expect(overlay?.padding).toBe("2.4px 4.8px");
+    expect(overlay?.border).toBe("3px solid rgb(255, 255, 0)");
+    expect(overlay?.webkitTextStroke).toContain("1px");
+    expect(overlay?.textShadow).toContain("1px");
+    expect(overlay?.textShadow).toContain("-1px");
     expect(overlay?.textAlign).toBe("right");
-    expect(overlay?.border).toBe("2px solid rgb(255, 255, 0)");
-    expect(overlay?.borderRadius).toBe("0px");
-    expect(overlay?.background).toBe("rgb(0, 0, 0)");
+    expect(overlay?.backgroundColor).toBe("rgb(0, 0, 0)");
     await result.stop();
   });
 
