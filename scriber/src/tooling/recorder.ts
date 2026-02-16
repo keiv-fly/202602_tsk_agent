@@ -76,6 +76,19 @@ interface SnapshotCapturePayload {
 const VIDEO_FRAME_RATE = 30;
 const VIDEO_FRAME_MODULUS = 65536;
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
+const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
+  const byStep = left.stepNumber - right.stepNumber;
+  if (byStep !== 0) {
+    return byStep;
+  }
+  const byTimestamp = left.timestamp.localeCompare(right.timestamp);
+  if (byTimestamp !== 0) {
+    return byTimestamp;
+  }
+  return left.actionId.localeCompare(right.actionId);
+};
+const sortActionsForOutput = (actions: ActionRecord[]) =>
+  [...actions].sort(compareActionsForOutput);
 
 export class ScriberRecorder {
   private options: RecorderOptions;
@@ -292,10 +305,11 @@ export class ScriberRecorder {
 
   async finalizeStop({ endTimestamp }: { endTimestamp: string }) {
     await this.prepareStop();
+    const sortedActions = sortActionsForOutput(this.actions);
     const actionsPath = resolve(this.options.outputDir, "actions.json");
     await writeFile(
       actionsPath,
-      JSON.stringify(this.actions, null, 2),
+      JSON.stringify(sortedActions, null, 2),
       "utf8"
     );
     await writeFile(
@@ -305,7 +319,7 @@ export class ScriberRecorder {
     );
     await writeFile(
       resolve(this.options.outputDir, "narration.json"),
-      JSON.stringify(buildNarrationRecords(this.actions), null, 2),
+      JSON.stringify(buildNarrationRecords(sortedActions), null, 2),
       "utf8"
     );
   }
@@ -582,7 +596,7 @@ export class ScriberRecorder {
     const jsonPath = resolve(this.options.outputDir, "actions.json");
     await appendJsonl(jsonlPath, action);
     this.actions.push(action);
-    await writeFile(jsonPath, JSON.stringify(this.actions, null, 2), "utf8");
+    await writeFile(jsonPath, JSON.stringify(sortActionsForOutput(this.actions), null, 2), "utf8");
   }
 
   private async waitForDomQuiet(pageId: string) {

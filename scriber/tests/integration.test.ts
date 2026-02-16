@@ -41,6 +41,22 @@ describe("scriber integration", () => {
     expect(files).toContain("video.webm");
     expect(files).toContain("dom");
     expect(files).toContain("narration.json");
+
+    const actionsJson = JSON.parse(
+      await readFile(resolve(outputDir, "actions.json"), "utf8")
+    ) as Array<{ stepNumber: number; timestamp: string; actionId: string }>;
+    const sortedActions = [...actionsJson].sort((left, right) => {
+      const byStep = left.stepNumber - right.stepNumber;
+      if (byStep !== 0) {
+        return byStep;
+      }
+      const byTimestamp = left.timestamp.localeCompare(right.timestamp);
+      if (byTimestamp !== 0) {
+        return byTimestamp;
+      }
+      return left.actionId.localeCompare(right.actionId);
+    });
+    expect(actionsJson).toEqual(sortedActions);
   });
 
   it("renders a top-left frame modulo overlay for the session", async () => {
