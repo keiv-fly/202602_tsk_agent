@@ -1,5 +1,5 @@
 {
-  "sessionId": "20260216_2151_www.thegoodride.com",
+  "sessionId": "20260216_2151_www.thewebsite.com",
   "startTimestamp": "2026-02-16T18:51:32.973Z",
   "browserType": "chromium",
   "browserVersion": "145.0.7632.6",
@@ -10,6 +10,6 @@
   },
   "timezone": "Europe/Moscow",
   "playwrightVersion": "1.58.1",
-  "startUrl": "https://www.thegoodride.com",
+  "startUrl": "https://www.thewebsite.com",
   "endTimestamp": "2026-02-16T18:51:52.210Z"
 }
