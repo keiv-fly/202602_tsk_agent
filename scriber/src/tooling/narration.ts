@@ -37,11 +37,11 @@ const isLikelySystemTriggeredClick = (action: ActionRecord) => {
 
 const hasMeaningfulFollowUp = (actions: ActionRecord[], index: number) => {
   const hover = actions[index];
-  const hoverTs = new Date(hover.timestamp).getTime();
+  const hoverTsNs = hover.timeSinceVideoStartNs;
   for (let i = index + 1; i < actions.length; i += 1) {
     const candidate = actions[i];
-    const delta = new Date(candidate.timestamp).getTime() - hoverTs;
-    if (delta > 1000) {
+    const deltaNs = candidate.timeSinceVideoStartNs - hoverTsNs;
+    if (deltaNs > 1_000_000_000) {
       return false;
     }
     if (candidate.pageId !== hover.pageId) {

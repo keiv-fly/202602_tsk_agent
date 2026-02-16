@@ -6,7 +6,7 @@ import { ActionRecord } from "../src/tooling/types.js";
 const mkAction = (overrides: Partial<ActionRecord>): ActionRecord => ({
   actionId: "a",
   stepNumber: 1,
-  timestamp: new Date().toISOString(),
+  timestamp: "2026-02-14T09:35:09.000Z",
   timeSinceVideoStartNs: 0,
   actionType: "click",
   url: "https://example.com",
@@ -27,12 +27,14 @@ describe("narration builder", () => {
         actionId: "hover-1",
         stepNumber: 1,
         timestamp: "2026-02-14T09:35:10.000Z",
+        timeSinceVideoStartNs: 10_000_000_000,
         actionType: "hover"
       }),
       mkAction({
         actionId: "click-1",
         stepNumber: 2,
         timestamp: "2026-02-14T09:35:12.500Z",
+        timeSinceVideoStartNs: 12_500_000_000,
         actionType: "click"
       })
     ];

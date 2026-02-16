@@ -16,8 +16,12 @@ export const validateActionSchema = (actions: ActionRecord[]) => {
     if (!action.url) {
       errors.push(`Missing url at index ${index}`);
     }
-    if (!action.timestamp) {
-      errors.push(`Missing timestamp at index ${index}`);
+    if (
+      typeof action.timestamp !== "string" ||
+      action.timestamp.length === 0 ||
+      Number.isNaN(Date.parse(action.timestamp))
+    ) {
+      errors.push(`Invalid timestamp at index ${index}`);
     }
     if (
       !Number.isInteger(action.timeSinceVideoStartNs) ||

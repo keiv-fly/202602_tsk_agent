@@ -46,7 +46,7 @@ interface PendingInput {
   stepNumber: number;
   pageId: string;
   url: string;
-  timestamp: string;
+  timestampNs: number;
   target?: TargetMetadata;
   selectors: { primarySelector: string | null; fallbackSelectors: string[] };
   details?: Record<string, unknown>;
@@ -55,11 +55,11 @@ interface PendingInput {
 interface PreActionPayload {
   selectors?: { primarySelector: string | null; fallbackSelectors: string[] };
   target?: TargetMetadata;
-  timestamp: number;
+  timestampNs: number;
 }
 
 interface PreActionEvidence {
-  capturedAt: number;
+  capturedAtNs: number;
   target?: TargetMetadata;
   selector: string | null;
   domGzip: Buffer;
@@ -116,8 +116,8 @@ export class ScriberRecorder {
         const action: ActionRecord = {
           actionId: pending.actionId,
           stepNumber: pending.stepNumber,
-          timestamp: pending.timestamp,
-          timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(pending.timestamp),
+          timestamp: this.formatTimestampFromNs(pending.timestampNs),
+          timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(pending.timestampNs),
           actionType: "fill",
           url: pending.url,
           pageId: pending.pageId,
@@ -338,7 +338,7 @@ export class ScriberRecorder {
     try {
       const snapshotPayload = await this.captureSnapshotPayload(page);
       return {
-        capturedAt: payload.timestamp,
+        capturedAtNs: payload.timestampNs,
         target: payload.target,
         selector: payload.selectors?.primarySelector ?? null,
         domGzip: await gzipHtml(`<!doctype html>${snapshotPayload.html}`),
@@ -351,9 +351,8 @@ export class ScriberRecorder {
   }
 
   private isPreActionMatch(action: ActionRecord, evidence: PreActionEvidence) {
-    const actionTime = new Date(action.timestamp).getTime();
-    const delta = actionTime - evidence.capturedAt;
-    if (delta < 0 || delta > 2000) {
+    const deltaNs = action.timeSinceVideoStartNs - evidence.capturedAtNs;
+    if (deltaNs < 0 || deltaNs > 2_000_000_000) {
       return false;
     }
     const actionSelector = action.primarySelector ?? null;
@@ -418,7 +417,9 @@ export class ScriberRecorder {
     }
 
     if (actionType === "fill") {
-      this.track(this.handleInput(page, url, target, selectors, details));
+      this.track(
+        this.handleInput(page, url, target, selectors, details, payload.timestampNs)
+      );
       return;
     }
 
@@ -428,7 +429,8 @@ export class ScriberRecorder {
         url,
         target,
         selectors,
-        details
+        details,
+        timestampNs: payload.timestampNs
       })
     );
   }
@@ -438,7 +440,8 @@ export class ScriberRecorder {
     url: string,
     target: TargetMetadata | undefined,
     selectors: { primarySelector: string | null; fallbackSelectors: string[] },
-    details?: Record<string, unknown>
+    details?: Record<string, unknown>,
+    browserTimestampNs?: number
   ) {
     const existing = this.inputDebouncer.getPending();
     if (
@@ -451,13 +454,16 @@ export class ScriberRecorder {
     const refreshed = this.inputDebouncer.getPending();
     const actionId = refreshed?.actionId ?? randomUUID();
     const stepNumber = refreshed?.stepNumber ?? this.nextStepNumber();
-    const timestamp = refreshed?.timestamp ?? new Date().toISOString();
+    const timestampNs = await this.resolveActionTimestampNs(
+      page,
+      refreshed?.timestampNs ?? browserTimestampNs
+    );
     const pending: PendingInput = {
       actionId,
       stepNumber,
       pageId: this.getPageId(page),
       url,
-      timestamp,
+      timestampNs,
       target,
       selectors,
       details
@@ -474,6 +480,7 @@ export class ScriberRecorder {
       target: TargetMetadata | undefined;
       selectors: { primarySelector: string | null; fallbackSelectors: string[] };
       details?: Record<string, unknown>;
+      timestampNs?: number;
     }
   ) {
     if (this.inputDebouncer.hasPending) {
@@ -483,13 +490,13 @@ export class ScriberRecorder {
     const actionId = randomUUID();
     const stepNumber = this.nextStepNumber();
     const pageId = this.getPageId(page);
-    const timestamp = new Date().toISOString();
+    const actionTimestampNs = await this.resolveActionTimestampNs(page, payload.timestampNs);
 
     const action: ActionRecord = {
       actionId,
       stepNumber,
-      timestamp,
-      timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(timestamp),
+      timestamp: this.formatTimestampFromNs(actionTimestampNs),
+      timeSinceVideoStartNs: this.buildTimeSinceVideoStartNs(actionTimestampNs),
       actionType: payload.actionType,
       url: payload.url,
       pageId,
@@ -595,6 +602,34 @@ export class ScriberRecorder {
     await appendJsonl(jsonlPath, action);
     this.actions.push(action);
     await writeFile(jsonPath, JSON.stringify(sortActionsForOutput(this.actions), null, 2), "utf8");
+  }
+
+  private async resolveActionTimestampNs(
+    page: Page | null,
+    browserTimestampNs?: number
+  ): Promise<number> {
+    if (typeof browserTimestampNs === "number" && Number.isFinite(browserTimestampNs)) {
+      return Math.max(0, Math.floor(browserTimestampNs));
+    }
+    if (page) {
+      const pageNowNs = await this.getBrowserElapsedNs(page);
+      if (typeof pageNowNs === "number" && Number.isFinite(pageNowNs)) {
+        return Math.max(0, Math.floor(pageNowNs));
+      }
+    }
+    const elapsedMs = Math.max(0, nowEpochMs() - this.sessionStartMs);
+    return Math.floor(elapsedMs * 1_000_000);
+  }
+
+  private async getBrowserElapsedNs(page: Page): Promise<number | null> {
+    try {
+      return await page.evaluate((sessionStartMs) => {
+        const elapsedMs = Math.max(0, performance.timeOrigin + performance.now() - sessionStartMs);
+        return Math.floor(elapsedMs * 1_000_000);
+      }, this.sessionStartMs);
+    } catch {
+      return null;
+    }
   }
 
   private async waitForDomQuiet(pageId: string) {
@@ -763,13 +798,19 @@ export class ScriberRecorder {
     return this.stepNumber;
   }
 
-  private buildTimeSinceVideoStartNs(timestamp: string) {
-    const actionTimeMs = new Date(timestamp).getTime();
-    if (!Number.isFinite(actionTimeMs) || !Number.isFinite(this.sessionStartMs)) {
+  private buildTimeSinceVideoStartNs(timestampNs: number) {
+    if (!Number.isFinite(timestampNs)) {
       return 0;
     }
-    const elapsedMs = Math.max(0, actionTimeMs - this.sessionStartMs);
-    return Math.round(elapsedMs * 1_000_000);
+    return Math.max(0, Math.floor(timestampNs));
+  }
+
+  private formatTimestampFromNs(timestampNs: number) {
+    if (!Number.isFinite(timestampNs)) {
+      return new Date(this.sessionStartMs).toISOString();
+    }
+    const timestampMs = this.sessionStartMs + Math.max(0, timestampNs) / 1_000_000;
+    return new Date(timestampMs).toISOString();
   }
 
   private getPageId(page: Page) {
@@ -802,6 +843,7 @@ interface RecorderPayload {
   selectors?: { primarySelector: string | null; fallbackSelectors: string[] };
   target?: TargetMetadata;
   details?: Record<string, unknown>;
+  timestampNs?: number;
 }
 
 const createInitScript = (sessionStartMs: number) => `
@@ -1044,12 +1086,19 @@ const createInitScript = (sessionStartMs: number) => `
     }
   };
 
+  const emitAction = (payload) => {
+    emit({
+      ...payload,
+      timestampNs: getElapsedNs(getEpochMs())
+    });
+  };
+
   const emitPrepareAction = (target) => {
     if (!window.__scriberPrepareAction) {
       return;
     }
     window.__scriberPrepareAction({
-      timestamp: getEpochMs(),
+      timestampNs: getElapsedNs(getEpochMs()),
       selectors: buildSelectors(target),
       target: buildTarget(target)
     });
@@ -1085,7 +1134,7 @@ const createInitScript = (sessionStartMs: number) => `
     if (actionType === 'hover') {
       truncateHoverPayload(targetMetadata, selectors);
     }
-    emit({
+    emitAction({
       actionType,
       url: window.location.href,
       selectors,
@@ -1407,7 +1456,7 @@ const createInitScript = (sessionStartMs: number) => `
     if (target === document || target === document.documentElement || target === document.body) {
       clearTimeout(pageScrollTimer);
       pageScrollTimer = setTimeout(() => {
-        emit({ actionType: 'scroll_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] }, details: { positionY: window.scrollY } });
+        emitAction({ actionType: 'scroll_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] }, details: { positionY: window.scrollY } });
       }, 150);
       return;
     }
@@ -1415,7 +1464,7 @@ const createInitScript = (sessionStartMs: number) => `
       const existing = elementScrollTimers.get(target);
       if (existing) clearTimeout(existing);
       const timer = setTimeout(() => {
-        emit({
+        emitAction({
           actionType: 'scroll_element',
           url: window.location.href,
           selectors: buildSelectors(target),
@@ -1429,7 +1478,7 @@ const createInitScript = (sessionStartMs: number) => `
 
   const originalScrollIntoView = Element.prototype.scrollIntoView;
   Element.prototype.scrollIntoView = function(...args) {
-    emit({
+    emitAction({
       actionType: 'scroll_into_view',
       url: window.location.href,
       selectors: buildSelectors(this),
@@ -1443,7 +1492,7 @@ const createInitScript = (sessionStartMs: number) => `
     const original = history[method];
     history[method] = function(...args) {
       const result = original.apply(this, args);
-      emit({ actionType: 'navigation', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
+      emitAction({ actionType: 'navigation', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
       return result;
     };
   };
@@ -1453,12 +1502,12 @@ const createInitScript = (sessionStartMs: number) => `
     const nextLength = history.length;
     const actionType = nextLength < historyIndex ? 'goBack' : 'goForward';
     historyIndex = nextLength;
-    emit({ actionType, url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
+    emitAction({ actionType, url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      emit({ actionType: 'switch_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
+      emitAction({ actionType: 'switch_page', url: window.location.href, selectors: { primarySelector: null, fallbackSelectors: [] } });
     }
   });
 })();

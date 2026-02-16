@@ -8,7 +8,7 @@ describe("action schema validation", () => {
       {
         actionId: "a1",
         stepNumber: 1,
-        timestamp: new Date().toISOString(),
+        timestamp: "2026-02-16T17:32:27.785Z",
         timeSinceVideoStartNs: 12_000_000,
         actionType: "click",
         url: "http://example.com",
@@ -23,7 +23,7 @@ describe("action schema validation", () => {
       {
         actionId: "a2",
         stepNumber: 2,
-        timestamp: new Date().toISOString(),
+        timestamp: "2026-02-16T17:32:27.794Z",
         timeSinceVideoStartNs: 21_000_000,
         actionType: "click",
         url: "http://example.com",
