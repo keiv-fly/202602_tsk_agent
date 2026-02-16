@@ -199,16 +199,25 @@ describe("scriber integration", () => {
       overlayOcr?: {
         before?: {
           value: number | null;
+          cutScreenshotFileName: string | null;
+          overlayRect: { left: number; top: number; width: number; height: number } | null;
+          ocrCropRect: { left: number; top: number; width: number; height: number } | null;
           expectedVideoFrameMod65536: number;
           matchesExpected: boolean | null;
         };
         at?: {
           value: number | null;
+          cutScreenshotFileName: string | null;
+          overlayRect: { left: number; top: number; width: number; height: number } | null;
+          ocrCropRect: { left: number; top: number; width: number; height: number } | null;
           expectedVideoFrameMod65536: number;
           matchesExpected: boolean | null;
         };
         after?: {
           value: number | null;
+          cutScreenshotFileName: string | null;
+          overlayRect: { left: number; top: number; width: number; height: number } | null;
+          ocrCropRect: { left: number; top: number; width: number; height: number } | null;
           expectedVideoFrameMod65536: number;
           matchesExpected: boolean | null;
         };
@@ -232,8 +241,25 @@ describe("scriber integration", () => {
     expect(typeof consolidatedClickAction?.overlayOcr?.at?.expectedVideoFrameMod65536).toBe(
       "number"
     );
+    const atOverlayRect = consolidatedClickAction?.overlayOcr?.at?.overlayRect;
+    const atCropRect = consolidatedClickAction?.overlayOcr?.at?.ocrCropRect;
+    expect(atOverlayRect == null || atOverlayRect.width > 0).toBe(true);
+    expect(atOverlayRect == null || atOverlayRect.height > 0).toBe(true);
+    expect(atCropRect == null || atCropRect.width > 0).toBe(true);
+    expect(atCropRect == null || atCropRect.height > 0).toBe(true);
+    if (atOverlayRect && atCropRect) {
+      expect(atCropRect.width).toBeLessThanOrEqual(atOverlayRect.width + 2);
+      expect(atCropRect.height).toBeLessThanOrEqual(atOverlayRect.height + 2);
+    }
     if (consolidatedClickAction?.overlayOcr?.at?.value !== null) {
       expect(consolidatedClickAction?.overlayOcr?.at?.matchesExpected).toBeTypeOf("boolean");
+    }
+    const screenshotsDirEntries = await readdir(resolve(outputDir, "screenshots"));
+    const atCutFileName = consolidatedClickAction?.overlayOcr?.at?.cutScreenshotFileName;
+    expect(typeof atCutFileName === "string" || atCutFileName === null).toBe(true);
+    if (atCutFileName) {
+      expect(atCutFileName).toMatch(/_ocr_cut\.png$/);
+      expect(screenshotsDirEntries).toContain(atCutFileName);
     }
   });
 

@@ -22,8 +22,6 @@ export const extractFramesFromVideo = async (
   videoPath: string,
   requests: VideoFrameExtractionRequest[]
 ) => {
-  const runId = `extract-${Date.now()}`;
-
   const outcomes: boolean[] = [];
   let successCount = 0;
   let failureCount = 0;

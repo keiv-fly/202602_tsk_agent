@@ -84,10 +84,20 @@ export interface ActionRecord extends SelectorInfo {
   details?: Record<string, unknown>;
 }
 
+export interface OverlayCropRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface OverlayOcrSnapshot {
   value: number | null;
   text: string | null;
   confidence: number | null;
+  cutScreenshotFileName: string | null;
+  overlayRect: OverlayCropRect | null;
+  ocrCropRect: OverlayCropRect | null;
   expectedVideoFrameMod65536: number;
   matchesExpected: boolean | null;
   error: string | null;

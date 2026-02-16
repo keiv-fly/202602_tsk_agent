@@ -133,7 +133,6 @@ export const startTool = async (
 ): Promise<StartResult> => {
   const startUrl = normalizeStartUrl(options.startUrl);
   const startedAt = new Date();
-  const startTimestamp = startedAt.toISOString();
   const sessionId = buildSessionId(startUrl, startedAt);
   const outputDir = resolve(options.outputDir ?? `sessions/${sessionId}`);
   await mkdir(outputDir, { recursive: true });
@@ -157,11 +156,12 @@ export const startTool = async (
   });
   const page = await context.newPage();
   const pageVideo = page.video();
+  const sessionStartTimestamp = new Date().toISOString();
 
   const recorder = new ScriberRecorder({
     sessionId,
     outputDir,
-    sessionStartTimestamp: startTimestamp,
+    sessionStartTimestamp,
     debounceMs: options.debounceMs ?? 500,
     quietWindowMs: options.quietWindowMs ?? 300,
     quietTimeoutMs: options.quietTimeoutMs ?? 5000,
@@ -179,7 +179,7 @@ export const startTool = async (
 
   const meta: SessionMeta = {
     sessionId,
-    startTimestamp,
+    startTimestamp: sessionStartTimestamp,
     browserType: "chromium",
     browserVersion: browser.version(),
     userAgent,
@@ -223,7 +223,7 @@ export const startTool = async (
 
     await recorder.finalizeStop({
       endTimestamp,
-      sessionStartTimestamp: startTimestamp,
+      sessionStartTimestamp,
       videoPath: finalizedVideoPath
     });
 
@@ -244,7 +244,7 @@ export const startTool = async (
     browserVersion: browser.version(),
     sessionId,
     userAgent,
-    startTimestamp,
+    startTimestamp: sessionStartTimestamp,
     timezone,
     outputDir,
     page,

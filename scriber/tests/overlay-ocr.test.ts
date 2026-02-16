@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseOverlayDigits } from "../src/tooling/overlayOcr.js";
+import { buildOverlayCutPath, parseOverlayDigits } from "../src/tooling/overlayOcr.js";
 
 describe("overlay OCR parsing", () => {
   it("extracts digit text up to 5 chars", () => {
@@ -13,5 +13,14 @@ describe("overlay OCR parsing", () => {
     expect(parseOverlayDigits("abc")).toBeNull();
     expect(parseOverlayDigits("999999")).toBeNull();
     expect(parseOverlayDigits("70000")).toBeNull();
+  });
+});
+
+describe("overlay OCR cut path", () => {
+  it("creates an OCR cut file path alongside the screenshot", () => {
+    const cutPath = buildOverlayCutPath(
+      "C:/tmp/screenshots/000001_abc123_before.png"
+    ).replaceAll("\\", "/");
+    expect(cutPath).toBe("C:/tmp/screenshots/000001_abc123_before_ocr_cut.png");
   });
 });

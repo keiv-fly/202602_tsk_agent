@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { performance as nodePerformance } from "node:perf_hooks";
 import { basename, resolve } from "node:path";
 
 import type { BrowserContext, Page } from "playwright";
@@ -18,13 +19,15 @@ import { RedactionRule, redactValue } from "./redaction.js";
 import {
   ActionRecord,
   ActionType,
+  OverlayCropRect,
   OverlayOcrSnapshot,
   SnapshotDescriptor,
   TargetMetadata
 } from "./types.js";
 import {
   createOverlayOcrWorker,
-  readOverlayNumberFromScreenshot
+  readOverlayNumberFromScreenshot,
+  type OverlayOcrRawResult
 } from "./overlayOcr.js";
 import { extractFramesFromVideo } from "./video.js";
 
@@ -69,6 +72,8 @@ interface PreActionEvidence {
   domGzip: Buffer;
   pageTitle: string | null;
   url: string;
+  overlayRect: OverlayCropRect | null;
+  textRect: OverlayCropRect | null;
 }
 
 interface PendingVideoSnapshot {
@@ -76,10 +81,25 @@ interface PendingVideoSnapshot {
   descriptor: SnapshotDescriptor;
   screenshotPath: string;
   capturedAt: number;
+  overlayRect: OverlayCropRect | null;
+  textRect: OverlayCropRect | null;
+}
+
+interface SnapshotOverlayCapture {
+  overlayRect: OverlayCropRect | null;
+  textRect: OverlayCropRect | null;
+}
+
+interface SnapshotCapturePayload extends SnapshotOverlayCapture {
+  capturedAt: number;
+  html: string;
 }
 
 const VIDEO_FRAME_RATE = 30;
 const VIDEO_FRAME_MODULUS = 65536;
+const OCR_CALIBRATION_MIN_CONFIDENCE = 70;
+const OCR_CALIBRATION_MAX_ABS_DELTA_FRAMES = 180;
+const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
 
 export class ScriberRecorder {
   private options: RecorderOptions;
@@ -102,7 +122,7 @@ export class ScriberRecorder {
   constructor(options: RecorderOptions) {
     this.options = options;
     const parsedStartMs = new Date(options.sessionStartTimestamp).getTime();
-    this.sessionStartMs = Number.isFinite(parsedStartMs) ? parsedStartMs : Date.now();
+    this.sessionStartMs = Number.isFinite(parsedStartMs) ? parsedStartMs : nowEpochMs();
     this.inputDebouncer = new InputDebouncer(options.debounceMs, {
       onStart: async () => undefined,
       onFlush: async (pending) => {
@@ -344,26 +364,16 @@ export class ScriberRecorder {
 
   private async capturePreActionEvidence(page: Page, payload: PreActionPayload) {
     try {
-      const html = await page.evaluate(() => {
-        const clone = document.documentElement.cloneNode(true) as HTMLElement;
-        const inputs = clone.querySelectorAll("input");
-        inputs.forEach((input) => {
-          if (
-            input instanceof HTMLInputElement &&
-            input.type.toLowerCase() === "password"
-          ) {
-            input.setAttribute("value", "********");
-          }
-        });
-        return `<!doctype html>${clone.outerHTML}`;
-      });
+      const snapshotPayload = await this.captureSnapshotPayload(page);
       return {
         capturedAt: payload.timestamp,
         target: payload.target,
         selector: payload.selectors?.primarySelector ?? null,
-        domGzip: await gzipHtml(html),
+        domGzip: await gzipHtml(`<!doctype html>${snapshotPayload.html}`),
         pageTitle: await this.safeGetPageTitle(page),
-        url: page.url()
+        url: page.url(),
+        overlayRect: snapshotPayload.overlayRect,
+        textRect: snapshotPayload.textRect
       } as PreActionEvidence;
     } catch {
       return null;
@@ -412,7 +422,11 @@ export class ScriberRecorder {
         pageId,
         phase: "before"
       },
-      evidence.capturedAt
+      evidence.capturedAt,
+      {
+        overlayRect: evidence.overlayRect,
+        textRect: evidence.textRect
+      }
     );
     this.preActionEvidenceByPage.delete(pageId);
     return true;
@@ -614,9 +628,16 @@ export class ScriberRecorder {
     descriptor: SnapshotDescriptor
   ) {
     try {
-      const capturedAt = Date.now();
-      await this.captureSnapshot(page, descriptor);
-      this.registerSnapshotForVideo(action, descriptor, capturedAt);
+      const snapshotCapture = await this.captureSnapshot(page, descriptor);
+      this.registerSnapshotForVideo(
+        action,
+        descriptor,
+        snapshotCapture.capturedAt,
+        {
+          overlayRect: snapshotCapture.overlayRect,
+          textRect: snapshotCapture.textRect
+        }
+      );
     } catch {
       // Ignore snapshot errors (e.g., page closed).
     }
@@ -652,7 +673,8 @@ export class ScriberRecorder {
   private registerSnapshotForVideo(
     action: ActionRecord,
     descriptor: SnapshotDescriptor,
-    capturedAt: number
+    capturedAt: number,
+    overlayCapture: SnapshotOverlayCapture
   ) {
     const screenshotPath = snapshotPath(
       this.options.outputDir,
@@ -667,7 +689,9 @@ export class ScriberRecorder {
       action,
       descriptor,
       screenshotPath,
-      capturedAt
+      capturedAt,
+      overlayRect: overlayCapture.overlayRect,
+      textRect: overlayCapture.textRect
     });
   }
 
@@ -695,50 +719,101 @@ export class ScriberRecorder {
     const snapshots = [...this.pendingVideoSnapshots].sort(
       (left, right) => left.capturedAt - right.capturedAt
     );
-    const outcomes = await extractFramesFromVideo(
-      videoPath,
+    const buildExtractionRequests = (frameAdjustment = 0) =>
       snapshots.map((snapshot) => ({
         outputPath: snapshot.screenshotPath,
-        offsetMs: Math.max(0, snapshot.capturedAt - sessionStartMs)
-      }))
-    );
+        offsetMs: Math.max(
+          0,
+          snapshot.capturedAt -
+            sessionStartMs -
+            (frameAdjustment * 1000) / VIDEO_FRAME_RATE
+        )
+      }));
+
+    let outcomes = await extractFramesFromVideo(videoPath, buildExtractionRequests(0));
     let ocrWorker: Awaited<ReturnType<typeof createOverlayOcrWorker>> | null = null;
     let ocrWorkerError: string | null = null;
+    const expectedFrames = snapshots.map((snapshot) =>
+      this.buildVideoFrameInfoFromMs(snapshot.capturedAt, sessionStartMs)
+    );
+    if (!ocrWorker && !ocrWorkerError) {
+      try {
+        ocrWorker = await createOverlayOcrWorker();
+      } catch (error) {
+        ocrWorkerError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    const evaluateOcr = async (currentOutcomes: boolean[]) => {
+      const ocrResults: Array<OverlayOcrRawResult | null> = [];
+      if (!ocrWorker) {
+        return ocrResults;
+      }
+      for (const [index, snapshot] of snapshots.entries()) {
+        if (!currentOutcomes[index]) {
+          ocrResults.push(null);
+          continue;
+        }
+        const ocrResult = await readOverlayNumberFromScreenshot(
+          ocrWorker,
+          snapshot.screenshotPath,
+          {
+            overlayRect: snapshot.overlayRect,
+            textRect: snapshot.textRect
+          }
+        );
+        ocrResults.push(ocrResult);
+      }
+      return ocrResults;
+    };
+
+    let ocrResults = await evaluateOcr(outcomes);
+    if (ocrWorker) {
+      const calibrationFrameDelta = this.computeOcrCalibrationFrameDelta(
+        ocrResults.map((ocrResult, index) => ({
+          value: ocrResult?.value ?? null,
+          confidence: ocrResult?.confidence ?? null,
+          expectedVideoFrameMod65536: expectedFrames[index]?.videoFrameMod65536 ?? 0
+        }))
+      );
+      if (Math.abs(calibrationFrameDelta) >= 2) {
+        outcomes = await extractFramesFromVideo(
+          videoPath,
+          buildExtractionRequests(calibrationFrameDelta)
+        );
+        ocrResults = await evaluateOcr(outcomes);
+      }
+    }
+
     for (const [index, snapshot] of snapshots.entries()) {
       if (!outcomes[index]) {
         this.setScreenshotFileName(snapshot.action, snapshot.descriptor.phase, null);
         continue;
       }
-      const expectedFrameInfo = this.buildVideoFrameInfoFromMs(
-        snapshot.capturedAt,
-        sessionStartMs
-      );
-      if (!ocrWorker && !ocrWorkerError) {
-        try {
-          ocrWorker = await createOverlayOcrWorker();
-        } catch (error) {
-          ocrWorkerError = error instanceof Error ? error.message : String(error);
-        }
-      }
-      if (!ocrWorker) {
+      const expectedFrameInfo = expectedFrames[index] ?? { videoFrameMod65536: 0 };
+      const ocrResult = ocrResults[index] ?? null;
+      if (!ocrResult) {
+        const candidateCropRect = snapshot.textRect ?? snapshot.overlayRect;
         this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
           value: null,
           text: null,
           confidence: null,
+          cutScreenshotFileName: null,
+          overlayRect: snapshot.overlayRect,
+          ocrCropRect: candidateCropRect,
           expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
           matchesExpected: null,
           error: ocrWorkerError ?? "OCR worker unavailable"
         });
         continue;
       }
-      const ocrResult = await readOverlayNumberFromScreenshot(
-        ocrWorker,
-        snapshot.screenshotPath
-      );
       this.setOverlayOcrSnapshot(snapshot.action, snapshot.descriptor.phase, {
         value: ocrResult.value,
         text: ocrResult.text,
         confidence: ocrResult.confidence,
+        cutScreenshotFileName: ocrResult.cutScreenshotFileName,
+        overlayRect: ocrResult.overlayRect,
+        ocrCropRect: ocrResult.cropRect,
         expectedVideoFrameMod65536: expectedFrameInfo.videoFrameMod65536,
         matchesExpected:
           ocrResult.value === null
@@ -812,7 +887,10 @@ export class ScriberRecorder {
     }
   }
 
-  private async captureSnapshot(page: Page, descriptor: SnapshotDescriptor) {
+  private async captureSnapshot(
+    page: Page,
+    descriptor: SnapshotDescriptor
+  ): Promise<SnapshotCapturePayload> {
     const domPath = snapshotPath(
       this.options.outputDir,
       "dom",
@@ -822,7 +900,16 @@ export class ScriberRecorder {
       "html.gz"
     );
 
-    const html = await page.evaluate(() => {
+    const snapshotPayload = await this.captureSnapshotPayload(page);
+
+    const gzipBuffer = await gzipHtml(snapshotPayload.html);
+    await writeFile(domPath, gzipBuffer);
+    return snapshotPayload;
+  }
+
+  private async captureSnapshotPayload(page: Page): Promise<SnapshotCapturePayload> {
+    return await page.evaluate(() => {
+      const capturedAt = performance.timeOrigin + performance.now();
       const clone = document.documentElement.cloneNode(true) as HTMLElement;
       const inputs = clone.querySelectorAll("input");
       inputs.forEach((input) => {
@@ -834,11 +921,85 @@ export class ScriberRecorder {
           input.setAttribute("value", "********");
         }
       });
-      return clone.outerHTML;
-    });
 
-    const gzipBuffer = await gzipHtml(html);
-    await writeFile(domPath, gzipBuffer);
+      const dpr = window.devicePixelRatio || 1;
+      const viewportWidth = Math.max(1, Math.round(window.innerWidth * dpr));
+      const viewportHeight = Math.max(1, Math.round(window.innerHeight * dpr));
+      let overlayRect: OverlayCropRect | null = null;
+      let textRect: OverlayCropRect | null = null;
+      const overlay = document.getElementById("__scriberFrameOverlay");
+      if (overlay instanceof HTMLElement) {
+        const bounds = overlay.getBoundingClientRect();
+        const style = window.getComputedStyle(overlay);
+        const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+        const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+        const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
+        const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+        const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+        const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+        const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+        const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+
+        const overlayRawLeft = Math.floor(bounds.left * dpr);
+        const overlayRawTop = Math.floor(bounds.top * dpr);
+        const overlayRawRight = Math.ceil((bounds.left + bounds.width) * dpr);
+        const overlayRawBottom = Math.ceil((bounds.top + bounds.height) * dpr);
+        const overlayClampedLeft = Math.min(Math.max(0, overlayRawLeft), viewportWidth - 1);
+        const overlayClampedTop = Math.min(Math.max(0, overlayRawTop), viewportHeight - 1);
+        const overlayClampedRight = Math.min(
+          Math.max(overlayClampedLeft + 1, overlayRawRight),
+          viewportWidth
+        );
+        const overlayClampedBottom = Math.min(
+          Math.max(overlayClampedTop + 1, overlayRawBottom),
+          viewportHeight
+        );
+        overlayRect = {
+          left: overlayClampedLeft,
+          top: overlayClampedTop,
+          width: Math.max(1, overlayClampedRight - overlayClampedLeft),
+          height: Math.max(1, overlayClampedBottom - overlayClampedTop)
+        };
+
+        const contentLeft = bounds.left + borderLeft + paddingLeft;
+        const contentTop = bounds.top + borderTop + paddingTop;
+        const contentWidth = Math.max(
+          1,
+          bounds.width - borderLeft - borderRight - paddingLeft - paddingRight
+        );
+        const contentHeight = Math.max(
+          1,
+          bounds.height - borderTop - borderBottom - paddingTop - paddingBottom
+        );
+        const textRawLeft = Math.floor(contentLeft * dpr);
+        const textRawTop = Math.floor(contentTop * dpr);
+        const textRawRight = Math.ceil((contentLeft + contentWidth) * dpr);
+        const textRawBottom = Math.ceil((contentTop + contentHeight) * dpr);
+        const textClampedLeft = Math.min(Math.max(0, textRawLeft), viewportWidth - 1);
+        const textClampedTop = Math.min(Math.max(0, textRawTop), viewportHeight - 1);
+        const textClampedRight = Math.min(
+          Math.max(textClampedLeft + 1, textRawRight),
+          viewportWidth
+        );
+        const textClampedBottom = Math.min(
+          Math.max(textClampedTop + 1, textRawBottom),
+          viewportHeight
+        );
+        textRect = {
+          left: textClampedLeft,
+          top: textClampedTop,
+          width: Math.max(1, textClampedRight - textClampedLeft),
+          height: Math.max(1, textClampedBottom - textClampedTop)
+        };
+      }
+
+      return {
+        capturedAt,
+        html: clone.outerHTML,
+        overlayRect,
+        textRect
+      };
+    });
   }
 
   private nextStepNumber() {
@@ -861,6 +1022,55 @@ export class ScriberRecorder {
       videoFrame,
       videoFrameMod65536: videoFrame % VIDEO_FRAME_MODULUS
     };
+  }
+
+  private normalizeSignedFrameDelta(frameDelta: number) {
+    const halfModulus = VIDEO_FRAME_MODULUS / 2;
+    return (
+      (((frameDelta + halfModulus) % VIDEO_FRAME_MODULUS) + VIDEO_FRAME_MODULUS) %
+        VIDEO_FRAME_MODULUS -
+      halfModulus
+    );
+  }
+
+  private computeOcrCalibrationFrameDelta(
+    samples: Array<{
+      value: number | null;
+      confidence: number | null;
+      expectedVideoFrameMod65536: number;
+    }>
+  ) {
+    const deltas = samples
+      .flatMap((sample) => {
+        if (sample.value === null) {
+          return [];
+        }
+        const confidence = sample.confidence ?? 0;
+        if (confidence < OCR_CALIBRATION_MIN_CONFIDENCE) {
+          return [];
+        }
+        const delta = this.normalizeSignedFrameDelta(
+          sample.value - sample.expectedVideoFrameMod65536
+        );
+        if (Math.abs(delta) > OCR_CALIBRATION_MAX_ABS_DELTA_FRAMES) {
+          return [];
+        }
+        return [delta];
+      })
+      .sort((left, right) => left - right);
+
+    if (deltas.length === 0) {
+      return 0;
+    }
+
+    const middle = Math.floor(deltas.length / 2);
+    if (deltas.length % 2 === 1) {
+      return deltas[middle] ?? 0;
+    }
+
+    const left = deltas[middle - 1] ?? 0;
+    const right = deltas[middle] ?? 0;
+    return Math.round((left + right) / 2);
   }
 
   private getPageId(page: Page) {
@@ -904,6 +1114,8 @@ const createInitScript = (
   const SCRIBER_SESSION_START_MS = ${sessionStartMs};
   const SCRIBER_VIDEO_FRAME_RATE = ${frameRate};
   const SCRIBER_VIDEO_FRAME_MODULUS = ${frameModulus};
+
+  const getEpochMs = () => performance.timeOrigin + performance.now();
 
   const buildCssPath = (element) => {
     if (!(element instanceof Element)) return null;
@@ -1061,7 +1273,7 @@ const createInitScript = (
     if (!overlay) {
       return;
     }
-    const frame = getVideoFrame(Date.now());
+    const frame = getVideoFrame(getEpochMs());
     overlay.textContent = String(frame % SCRIBER_VIDEO_FRAME_MODULUS);
   };
 
@@ -1132,7 +1344,7 @@ const createInitScript = (
       return;
     }
     window.__scriberPrepareAction({
-      timestamp: Date.now(),
+      timestamp: getEpochMs(),
       selectors: buildSelectors(target),
       target: buildTarget(target)
     });
