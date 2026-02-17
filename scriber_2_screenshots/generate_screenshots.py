@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from typing import Iterable, Sequence
 import cv2
 import numpy as np
 from tqdm import tqdm
+import pytesseract
+
 
 
 DEFAULT_TEMPLATE_SCORE_THRESHOLD = 0.43
@@ -18,6 +21,8 @@ DEFAULT_RECORDER_TS_PATH = (
     Path(__file__).resolve().parents[1] / "scriber" / "src" / "tooling" / "recorder.ts"
 )
 GLYPH_CANVAS_SIZE = (26, 38)
+TESSERACT_OCR_SCALE_FACTOR = 3
+TESSERACT_CONFIG = "--psm 7 -c tessedit_char_whitelist=0123456789"
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,7 @@ class OverlayTemplateStyle:
 class FrameOcrResult:
     frame_index: int
     ms: int | None
+    match_probability: float | None = None
 
 
 @dataclass(frozen=True)
@@ -186,6 +192,107 @@ def _crop_frame(frame, crop_rect: tuple[int, int, int, int] | None):
     return frame[top : top + height, left : left + width]
 
 
+def _score_to_probability(score: float) -> float:
+    if not np.isfinite(score):
+        return 0.0
+    return float(max(0.0, min(1.0, score)))
+
+
+def _ensure_pytesseract_available() -> None:
+    if pytesseract is None:
+        raise RuntimeError(
+            "pytesseract is required for OCR. Install dependencies with "
+            "`pip install pytesseract` and install the Tesseract OCR binary."
+        )
+
+
+def ensure_tesseract_runtime_ready() -> str:
+    _ensure_pytesseract_available()
+    try:
+        version = str(pytesseract.get_tesseract_version())  # type: ignore[union-attr]
+    except Exception as error:
+        raise RuntimeError(
+            "Tesseract OCR binary not found or not executable. "
+            "Install Tesseract and ensure it is available on PATH."
+        ) from error
+    return version
+
+
+def parse_overlay_digits(input_text: str | None, max_digits: int = DEFAULT_DIGIT_COUNT) -> int | None:
+    if not input_text:
+        return None
+    normalized = re.sub(r"\s+", "", input_text)
+    match = re.search(r"\d+", normalized)
+    if match is None:
+        return None
+    digits = match.group(0)
+    if len(digits) > max(1, max_digits):
+        return None
+    parsed = int(digits)
+    if parsed < 0 or parsed > 999_999:
+        return None
+    return parsed
+
+
+def _prepare_roi_for_tesseract(roi: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi.copy()
+    enlarged = cv2.resize(
+        gray,
+        None,
+        fx=TESSERACT_OCR_SCALE_FACTOR,
+        fy=TESSERACT_OCR_SCALE_FACTOR,
+        interpolation=cv2.INTER_CUBIC,
+    )
+    blurred = cv2.GaussianBlur(enlarged, (3, 3), 0)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return binary
+
+
+def _extract_tesseract_text_and_confidence(ocr_data: dict) -> tuple[str, float]:
+    fragments: list[str] = []
+    confidences: list[float] = []
+    raw_text = ocr_data.get("text") or []
+    raw_conf = ocr_data.get("conf") or []
+
+    for text_value, conf_value in zip(raw_text, raw_conf):
+        text = str(text_value).strip()
+        if not text:
+            continue
+        digits_only = re.sub(r"[^\d]", "", text)
+        if not digits_only:
+            continue
+        try:
+            confidence = float(conf_value)
+        except (TypeError, ValueError):
+            continue
+        if confidence < 0:
+            continue
+        fragments.append(digits_only)
+        confidences.append(confidence)
+
+    average_confidence = float(sum(confidences) / len(confidences)) if confidences else 0.0
+    return "".join(fragments), _score_to_probability(average_confidence / 100.0)
+
+
+def _recognize_digits_with_tesseract(roi: np.ndarray, max_digits: int) -> FrameTemplateMatch:
+    _ensure_pytesseract_available()
+    prepared = _prepare_roi_for_tesseract(roi)
+    best_match = FrameTemplateMatch(value=None, score=0.0)
+
+    for candidate in (prepared, cv2.bitwise_not(prepared)):
+        ocr_data = pytesseract.image_to_data(  # type: ignore[union-attr]
+            candidate,
+            config=TESSERACT_CONFIG,
+            output_type=pytesseract.Output.DICT,  # type: ignore[union-attr]
+        )
+        text, confidence = _extract_tesseract_text_and_confidence(ocr_data)
+        value = parse_overlay_digits(text, max_digits=max_digits)
+        if value is not None and confidence >= best_match.score:
+            best_match = FrameTemplateMatch(value=value, score=confidence)
+
+    return best_match
+
+
 def match_overlay_digits(
     roi,
     templates: dict[str, np.ndarray],
@@ -194,39 +301,11 @@ def match_overlay_digits(
 ) -> FrameTemplateMatch:
     if roi is None or roi.size == 0:
         return FrameTemplateMatch(value=None, score=0.0)
-
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi.copy()
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-
-    width = binary.shape[1]
-    boundaries = np.linspace(0, width, digit_count + 1, dtype=np.int32)
-
-    predicted_digits: list[str] = []
-    scores: list[float] = []
-
-    for i in range(digit_count):
-        left = int(boundaries[i])
-        right = int(boundaries[i + 1])
-        if right <= left:
-            return FrameTemplateMatch(value=None, score=0.0)
-        cell = binary[:, left:right]
-        glyph = _extract_centered_glyph(cell)
-        best_digit = "0"
-        best_score = -1.0
-        for digit, template in templates.items():
-            score = float(cv2.matchTemplate(glyph, template, cv2.TM_CCOEFF_NORMED)[0, 0])
-            if score > best_score:
-                best_score = score
-                best_digit = digit
-        predicted_digits.append(best_digit)
-        scores.append(best_score)
-
-    average_score = float(sum(scores) / len(scores)) if scores else 0.0
-    if average_score < min_score:
-        return FrameTemplateMatch(value=None, score=average_score)
-
-    return FrameTemplateMatch(value=int("".join(predicted_digits)), score=average_score)
+    del templates  # Unused after switching to Tesseract OCR.
+    match = _recognize_digits_with_tesseract(roi, max_digits=digit_count)
+    if match.score < min_score:
+        return FrameTemplateMatch(value=None, score=match.score)
+    return match
 
 
 def run_template_matching_on_video(
@@ -235,6 +314,7 @@ def run_template_matching_on_video(
     style: OverlayTemplateStyle,
     min_score: float = DEFAULT_TEMPLATE_SCORE_THRESHOLD,
 ) -> tuple[list[FrameOcrResult], list]:
+    ensure_tesseract_runtime_ready()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Unable to open video: {video_path}")
@@ -245,11 +325,9 @@ def run_template_matching_on_video(
 
     frame_results: list[FrameOcrResult] = []
     frames: list = []
-    templates: dict[str, np.ndarray] | None = (
-        build_digit_templates(crop_rect, style) if crop_rect is not None else None
-    )
+    templates: dict[str, np.ndarray] = {}
 
-    for frame_index in tqdm(range(total_frames), desc=f"Template match {video_path.name}"):
+    for frame_index in tqdm(range(total_frames), desc=f"Tesseract OCR {video_path.name}"):
         ok, frame = cap.read()
         if not ok:
             break
@@ -266,11 +344,13 @@ def run_template_matching_on_video(
             else FrameTemplateMatch(value=None, score=0.0)
         )
         ms = match.value
-        if ms is None:
-            cap_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-            if np.isfinite(cap_ms):
-                ms = max(0, int(round(float(cap_ms))))
-        frame_results.append(FrameOcrResult(frame_index=frame_index, ms=ms))
+        frame_results.append(
+            FrameOcrResult(
+                frame_index=frame_index,
+                ms=ms,
+                match_probability=_score_to_probability(match.score),
+            )
+        )
         frames.append(frame)
 
     cap.release()
@@ -282,6 +362,62 @@ def write_frame_ms_file(results: Sequence[FrameOcrResult], output_path: Path) ->
     with output_path.open("w", encoding="utf-8") as f:
         for result in results:
             f.write(f"{result.ms if result.ms is not None else 'None'}\n")
+
+
+def write_frame_ms_table_file(results: Sequence[FrameOcrResult], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", "ocr_ms", "match_probability"])
+        for result in results:
+            probability = (
+                f"{result.match_probability:.6f}" if result.match_probability is not None else ""
+            )
+            writer.writerow(
+                [result.frame_index, result.ms if result.ms is not None else "None", probability]
+            )
+
+
+def write_number_check_outputs(
+    frame_results: Sequence[FrameOcrResult],
+    frames: Sequence,
+    crop_rect: tuple[int, int, int, int] | None,
+    output_dir: Path,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table_path = output_dir / "screenshot_number_table.csv"
+    for stale_image in output_dir.glob("second_*.png"):
+        stale_image.unlink()
+
+    valid_ms = [result.ms for result in frame_results if result.ms is not None]
+    if not valid_ms:
+        with table_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["screenshot_name", "id", "ocr_ms"])
+        return
+
+    max_ms = max(0, int(valid_ms[-1]))
+    with table_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["screenshot_name", "id", "ocr_ms"])
+
+        for target_ms in range(0, max_ms + 1, 1000):
+            frame_idx = find_frame_index(frame_results, target_ms, mode="at_or_before")
+            frame = frames[frame_idx]
+            cropped = _crop_frame(frame, crop_rect)
+
+            screenshot_name = f"second_{target_ms // 1000:06d}.png"
+            screenshot_path = output_dir / screenshot_name
+            cv2.imwrite(str(screenshot_path), cropped)
+
+            selected_result = frame_results[frame_idx]
+            writer.writerow(
+                [
+                    screenshot_name,
+                    selected_result.frame_index,
+                    selected_result.ms if selected_result.ms is not None else "None",
+                ]
+            )
 
 
 def find_frame_index(
@@ -374,6 +510,8 @@ def process_session(
     actions = load_actions(actions_path)
     crop_rect = determine_crop_rect(actions)
     style = load_overlay_template_style(recorder_ts_path)
+    tesseract_version = ensure_tesseract_runtime_ready()
+    print(f"Using Tesseract OCR {tesseract_version}")
 
     frame_results, frames = run_template_matching_on_video(
         video_path,
@@ -383,6 +521,13 @@ def process_session(
     )
 
     write_frame_ms_file(frame_results, analytics_dir / "ocr_ms_per_frame.txt")
+    write_frame_ms_table_file(frame_results, analytics_dir / "ocr_ms_per_frame_table.csv")
+    write_number_check_outputs(
+        frame_results=frame_results,
+        frames=frames,
+        crop_rect=crop_rect,
+        output_dir=analytics_dir / "check_number_ocr",
+    )
     updated_actions = capture_action_screenshots(actions, frame_results, frames, screenshots_dir)
     save_actions(updated_actions, analytics_dir / "actions.json")
 
@@ -423,7 +568,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--min-template-score",
         type=float,
         default=DEFAULT_TEMPLATE_SCORE_THRESHOLD,
-        help="Minimum average template matching score required for frame ms values.",
+        help="Minimum OCR confidence probability required for frame ms values.",
     )
     parser.add_argument(
         "--recorder-ts-path",

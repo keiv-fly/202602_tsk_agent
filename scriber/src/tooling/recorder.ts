@@ -74,6 +74,9 @@ interface SnapshotCapturePayload {
 }
 
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
+const DEBUG_SNAPSHOT_LOGS_ENABLED =
+  process.env.SCRIBER_DEBUG_SNAPSHOT_LOGS === "1" ||
+  process.env.SCRIBER_DEBUG_SNAPSHOT_LOGS === "true";
 const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
   const byStep = left.stepNumber - right.stepNumber;
   if (byStep !== 0) {
@@ -591,8 +594,14 @@ export class ScriberRecorder {
         action.overlayRect = snapshotCapture.overlayRect;
         action.ocrCropRect = snapshotCapture.textRect ?? snapshotCapture.overlayRect;
       }
-    } catch {
-      // Ignore snapshot errors (e.g., page closed).
+    } catch (error) {
+      if (DEBUG_SNAPSHOT_LOGS_ENABLED) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[scriber][snapshot] failed phase=${descriptor.phase} step=${descriptor.stepNumber} actionId=${descriptor.actionId} pageId=${descriptor.pageId} reason=${reason}`
+        );
+      }
+      // Ignore snapshot errors (e.g., page closed), unless debug logs are enabled.
     }
   }
 
@@ -696,7 +705,11 @@ export class ScriberRecorder {
     const snapshotPayload = await this.captureSnapshotPayload(page);
 
     const gzipBuffer = await gzipHtml(snapshotPayload.html);
-    await writeFile(domPath, gzipBuffer);
+    try {
+      await writeFile(domPath, gzipBuffer);
+    } catch {
+      // Keep overlay/crop rects even when writing DOM artifacts fails.
+    }
     return snapshotPayload;
   }
 
@@ -990,27 +1003,31 @@ const createInitScript = (sessionStartMs: number) => `
     frameOverlay.id = '__scriberFrameOverlay';
     frameOverlay.className = 'ocr-digits';
     frameOverlay.setAttribute('aria-hidden', 'true');
-    frameOverlay.style.display = 'inline-block';
-    frameOverlay.style.position = 'fixed';
-    frameOverlay.style.top = '6px';
-    frameOverlay.style.left = '6px';
-    frameOverlay.style.width = '6ch';
-    frameOverlay.style.padding = '2.4px 4.8px';
-    frameOverlay.style.textAlign = 'right';
-    frameOverlay.style.border = '3px solid #ffff00';
-    frameOverlay.style.backgroundColor = '#000000';
-    frameOverlay.style.color = '#FFFFFF';
-    frameOverlay.style.fontFamily = '"Roboto Mono", monospace';
-    frameOverlay.style.fontWeight = '700';
-    frameOverlay.style.fontSize = '21.6px';
-    frameOverlay.style.lineHeight = '1';
-    frameOverlay.style.letterSpacing = '0.06em';
-    frameOverlay.style.fontVariantNumeric = 'tabular-nums lining-nums';
-    frameOverlay.style.webkitTextStroke = '1px #000000';
-    frameOverlay.style.textShadow = '1px 0 #000, -1px 0 #000, 0 1px #000, 0 -1px #000';
-    frameOverlay.style.pointerEvents = 'none';
-    frameOverlay.style.userSelect = 'none';
-    frameOverlay.style.zIndex = '2147483647';
+    Object.assign(frameOverlay.style, {
+      display: 'inline-block',
+      position: 'fixed',
+      top: '6px',
+      left: '6px',
+      width: 'auto',
+      padding: '3px 5px',
+      boxSizing: 'content-box',
+      whiteSpace: 'pre',
+      textAlign: 'right',
+      backgroundColor: '#000000',
+      color: '#FFFFFF',
+      fontFamily: '"Roboto Mono", monospace',
+      fontWeight: '700',
+      fontSize: '22px',
+      lineHeight: '1',
+      letterSpacing: '0.06em',
+      fontVariantNumeric: 'tabular-nums lining-nums',
+      WebkitTextStroke: '0.5px #000000',
+      textShadow: 'none',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: '2147483647',
+      overflow: 'visible',
+    });
     root.appendChild(frameOverlay);
     return frameOverlay;
   };

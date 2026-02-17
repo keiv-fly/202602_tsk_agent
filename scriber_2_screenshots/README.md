@@ -7,15 +7,17 @@ Generate action-aligned screenshots and analytics from Scriber session recording
 The entrypoint `generate_screenshots.py`:
 
 - reads `actions.json` and `video.webm` from each session's `01_scriber` folder
-- uses OpenCV template matching to read the overlay digits on each frame
-- derives template style values from `scriber/src/tooling/recorder.ts` so matching stays aligned with Scriber CSS
+- uses Tesseract OCR (digits-only) to read the overlay number on each frame
+- uses style values from `scriber/src/tooling/recorder.ts` to determine expected digit length
 - captures three screenshots per action (`before`, `at`, `after`)
 - writes analytics artifacts to `02_scriber_analytics`
+- writes a per-frame CSV table with OCR-only values, frame id, and match probability (`ocr_ms_per_frame_table.csv`)
+- writes `check_number_ocr/` with one cropped screenshot per second and a screenshot table including the matching frame id and OCR value
 
 ## Prerequisites
 
 - Python 3.10+
-- No Tesseract install required
+- Tesseract OCR binary installed and available on your `PATH`
 
 ## Install Python dependencies
 
@@ -24,7 +26,7 @@ From the repository root:
 ```bash
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install opencv-python tqdm pytest
+pip install opencv-python pytesseract tqdm pytest
 ```
 
 ## Run
@@ -46,13 +48,13 @@ Examples:
 - process one specific session folder:
 
   ```bash
-  python -m scriber_2_screenshots.generate_screenshots sessions/20260216_2151_www.thegoodride.com
+  python generate_screenshots.py sessions/20260216_2151_www.thegoodride.com
   ```
 
-- set template score threshold (default: `0.43`):
+- set OCR confidence threshold (default: `0.43`):
 
   ```bash
-  python -m scriber_2_screenshots.generate_screenshots sessions --min-template-score 0.40
+  python generate_screenshots.py sessions --min-template-score 0.40
   ```
 
 - override the recorder source file used to derive template style:
@@ -81,6 +83,12 @@ sessions/<session_name>/
   02_scriber_analytics/
     actions.json
     ocr_ms_per_frame.txt
+    ocr_ms_per_frame_table.csv
+    check_number_ocr/
+      screenshot_number_table.csv
+      second_000000.png
+      second_000001.png
+      ...
     screenshots/
       <actionId>_before.png
       <actionId>_at.png

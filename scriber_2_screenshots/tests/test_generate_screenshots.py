@@ -1,22 +1,21 @@
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from scriber_2_screenshots.generate_screenshots import (
     FrameOcrResult,
     OverlayTemplateStyle,
-    _estimate_font_scale,
-    _render_digit_template,
-    build_digit_templates,
     capture_action_screenshots,
     determine_crop_rect,
     find_frame_index,
     load_overlay_template_style,
     match_overlay_digits,
+    parse_overlay_digits,
     parse_args,
     process_session,
     resolve_session_dirs,
+    write_number_check_outputs,
+    write_frame_ms_table_file,
 )
 
 
@@ -46,34 +45,48 @@ def test_load_overlay_template_style_parses_recorder_css_values(tmp_path: Path) 
     )
 
 
-def test_match_overlay_digits_reads_synthetic_roi() -> None:
-    style = OverlayTemplateStyle(digit_count=6)
-    crop_rect = (0, 0, 120, 48)
-    templates = build_digit_templates(crop_rect, style)
-    height = crop_rect[3]
-    width = crop_rect[2]
-    boundaries = np.linspace(0, width, style.digit_count + 1, dtype=np.int32)
-    expected_text = "012345"
-    font_scale = _estimate_font_scale(crop_rect[2], crop_rect[3], style)
+def test_parse_overlay_digits_allows_up_to_default_digit_count() -> None:
+    assert parse_overlay_digits("  012345  ") == 12345
+    assert parse_overlay_digits("1234567") is None
 
-    gray = np.zeros((height, width), dtype=np.uint8)
-    for i, digit in enumerate(expected_text):
-        left = int(boundaries[i])
-        right = int(boundaries[i + 1])
-        cell = gray[:, left:right]
-        rendered = _render_digit_template(
-            digit=digit,
-            cell_width=max(1, right - left),
-            cell_height=height,
-            font_scale=font_scale,
-            font_weight=style.font_weight,
-        )
-        cell[:, :] = rendered
 
-    roi = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    result = match_overlay_digits(roi, templates=templates, digit_count=style.digit_count, min_score=0.1)
+def test_match_overlay_digits_reads_tesseract_result(monkeypatch) -> None:
+    class FakeOutput:
+        DICT = "DICT"
 
-    assert result.value == int(expected_text)
+    class FakePytesseract:
+        Output = FakeOutput
+
+        @staticmethod
+        def image_to_data(image, config, output_type):
+            assert "--psm 7" in config
+            return {"text": ["012345"], "conf": ["94"]}
+
+    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.pytesseract", FakePytesseract)
+
+    roi = np.zeros((16, 64, 3), dtype=np.uint8)
+    result = match_overlay_digits(roi, templates={}, digit_count=6, min_score=0.1)
+    assert result.value == 12345
+    assert result.score == 0.94
+
+
+def test_match_overlay_digits_respects_min_confidence_threshold(monkeypatch) -> None:
+    class FakeOutput:
+        DICT = "DICT"
+
+    class FakePytesseract:
+        Output = FakeOutput
+
+        @staticmethod
+        def image_to_data(image, config, output_type):
+            return {"text": ["999"], "conf": ["12"]}
+
+    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.pytesseract", FakePytesseract)
+
+    roi = np.zeros((12, 32, 3), dtype=np.uint8)
+    result = match_overlay_digits(roi, templates={}, digit_count=6, min_score=0.2)
+    assert result.value is None
+    assert result.score == 0.12
 
 
 def test_find_frame_index_before_and_after_modes() -> None:
@@ -112,6 +125,85 @@ def test_capture_action_screenshots_writes_three_images(tmp_path: Path, monkeypa
     assert updated[0]["screenshotTimesMs"] == {"before": 200, "at": 500, "after": 1300}
 
 
+def test_write_frame_ms_table_file_writes_ms_and_probability(tmp_path: Path) -> None:
+    output_path = tmp_path / "ocr_ms_per_frame_table.csv"
+    write_frame_ms_table_file(
+        [
+            FrameOcrResult(frame_index=0, ms=100, match_probability=0.81234),
+            FrameOcrResult(frame_index=1, ms=None, match_probability=0.0),
+        ],
+        output_path,
+    )
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "id,ocr_ms,match_probability" in content
+    assert "0,100,0.812340" in content
+    assert "1,None,0.000000" in content
+
+
+def test_write_number_check_outputs_writes_crops_and_table(tmp_path: Path, monkeypatch) -> None:
+    frame_results = [
+        FrameOcrResult(frame_index=0, ms=0),
+        FrameOcrResult(frame_index=1, ms=900),
+        FrameOcrResult(frame_index=2, ms=1400),
+        FrameOcrResult(frame_index=3, ms=2200),
+    ]
+    frames = [np.zeros((10, 20, 3), dtype=np.uint8) for _ in range(4)]
+
+    def fake_imwrite(path: str, frame) -> bool:
+        Path(path).write_text(f"{frame.shape[1]}x{frame.shape[0]}", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
+
+    write_number_check_outputs(
+        frame_results=frame_results,
+        frames=frames,
+        crop_rect=(2, 3, 6, 4),
+        output_dir=tmp_path,
+    )
+
+    assert (tmp_path / "second_000000.png").exists()
+    assert (tmp_path / "second_000001.png").exists()
+    assert (tmp_path / "second_000002.png").exists()
+
+    table_content = (tmp_path / "screenshot_number_table.csv").read_text(encoding="utf-8")
+    assert "screenshot_name,id,ocr_ms" in table_content
+    assert "second_000000.png,0,0" in table_content
+    assert "second_000001.png,1,900" in table_content
+    assert "second_000002.png,2,1400" in table_content
+
+
+def test_write_number_check_outputs_uses_last_frame_ms_and_cleans_stale_images(
+    tmp_path: Path, monkeypatch
+) -> None:
+    frame_results = [
+        FrameOcrResult(frame_index=0, ms=0),
+        FrameOcrResult(frame_index=1, ms=999_999),
+        FrameOcrResult(frame_index=2, ms=2_000),
+    ]
+    frames = [np.zeros((10, 20, 3), dtype=np.uint8) for _ in range(3)]
+    stale_image = tmp_path / "second_999999.png"
+    stale_image.write_text("stale", encoding="utf-8")
+
+    def fake_imwrite(path: str, frame) -> bool:
+        Path(path).write_text(f"{frame.shape[1]}x{frame.shape[0]}", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
+
+    write_number_check_outputs(
+        frame_results=frame_results,
+        frames=frames,
+        crop_rect=(2, 3, 6, 4),
+        output_dir=tmp_path,
+    )
+
+    assert not stale_image.exists()
+    table_lines = (tmp_path / "screenshot_number_table.csv").read_text(encoding="utf-8").splitlines()
+    assert len(table_lines) == 4  # header + seconds 0,1,2
+
+
 def test_determine_crop_rect_uses_action_ocr_crop_rect() -> None:
     actions = [{"ocrCropRect": {"left": 1, "top": 2, "width": 3, "height": 4}}]
     assert determine_crop_rect(actions) == (1, 2, 3, 4)
@@ -128,7 +220,7 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     (scriber_dir / "video.webm").write_text("placeholder", encoding="utf-8")
 
     fake_results = [FrameOcrResult(frame_index=0, ms=1000)]
-    fake_frames = ["frame"]
+    fake_frames = [np.zeros((12, 24, 3), dtype=np.uint8)]
 
     def fake_run_template_matching_on_video(video_path, crop_rect, style, min_score):
         return fake_results, fake_frames
@@ -141,6 +233,10 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
         "scriber_2_screenshots.generate_screenshots.run_template_matching_on_video",
         fake_run_template_matching_on_video,
     )
+    monkeypatch.setattr(
+        "scriber_2_screenshots.generate_screenshots.ensure_tesseract_runtime_ready",
+        lambda: "test-version",
+    )
     monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
 
     process_session(session_dir, min_template_score=0.2)
@@ -148,6 +244,8 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     analytics = session_dir / "02_scriber_analytics"
     assert (analytics / "actions.json").exists()
     assert (analytics / "ocr_ms_per_frame.txt").read_text(encoding="utf-8").strip() == "1000"
+    assert (analytics / "ocr_ms_per_frame_table.csv").exists()
+    assert (analytics / "check_number_ocr" / "screenshot_number_table.csv").exists()
     assert (analytics / "screenshots" / "x_before.png").exists()
 
 
