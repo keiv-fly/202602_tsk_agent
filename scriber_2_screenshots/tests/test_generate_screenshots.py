@@ -6,6 +6,7 @@ from scriber_2_screenshots.generate_screenshots import (
     FrameOcrResult,
     OverlayTemplateStyle,
     capture_action_screenshots,
+    determine_secondary_ocr_capture,
     determine_crop_rect,
     find_frame_index,
     load_overlay_template_style,
@@ -14,6 +15,7 @@ from scriber_2_screenshots.generate_screenshots import (
     parse_args,
     process_session,
     resolve_session_dirs,
+    write_secondary_ocr_digits_image,
     write_number_check_outputs,
     write_frame_ms_table_file,
 )
@@ -209,13 +211,80 @@ def test_determine_crop_rect_uses_action_ocr_crop_rect() -> None:
     assert determine_crop_rect(actions) == (1, 2, 3, 4)
 
 
+def test_determine_secondary_ocr_capture_uses_first_overlay_event_plus_delay() -> None:
+    actions = [
+        {"timeSinceVideoStartNs": 100_000_000},
+        {
+            "timeSinceVideoStartNs": 2_000_000_000,
+            "secondaryOcrCropRect": {"left": 11, "top": 43, "width": 135, "height": 23},
+        },
+        {
+            "timeSinceVideoStartNs": 2_500_000_000,
+            "secondaryOcrCropRect": {"left": 99, "top": 99, "width": 1, "height": 1},
+        },
+    ]
+    assert determine_secondary_ocr_capture(actions) == ((11, 43, 135, 23), 2500)
+
+
+def test_write_secondary_ocr_digits_image_writes_cropped_secondary_overlay(
+    tmp_path: Path, monkeypatch
+) -> None:
+    actions = [
+        {
+            "timeSinceVideoStartNs": 1_000_000_000,
+            "secondaryOcrCropRect": {"left": 2, "top": 3, "width": 31, "height": 8},
+        }
+    ]
+    frame_results = [
+        FrameOcrResult(frame_index=0, ms=500),
+        FrameOcrResult(frame_index=1, ms=1200),
+        FrameOcrResult(frame_index=2, ms=1800),
+    ]
+    frames = [np.zeros((12, 40, 3), dtype=np.uint8) for _ in range(3)]
+    for digit in range(10):
+        left = 3 + (digit * 3)
+        frames[2][5:9, left : left + 2] = 255
+
+    def fake_imwrite(path: str, frame) -> bool:
+        Path(path).write_text(f"{frame.shape[1]}x{frame.shape[0]}", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
+
+    output_path = tmp_path / "ocr_digits" / "ocr_digits.png"
+    write_secondary_ocr_digits_image(
+        actions=actions,
+        frame_results=frame_results,
+        frames=frames,
+        output_path=output_path,
+        overlay_settle_delay_ms=500,
+    )
+
+    digits_dir = tmp_path / "ocr_digits"
+    padded_dir = tmp_path / "ocr_digits_2"
+    assert output_path.exists()
+    assert output_path.read_text(encoding="utf-8") == "31x8"
+    assert (digits_dir / "ocr_digits_otsu.png").exists()
+    assert (digits_dir / "ocr_digits_otsu.png").read_text(encoding="utf-8") == "31x8"
+
+    for digit in range(10):
+        assert (digits_dir / f"{digit}.png").exists()
+        assert (digits_dir / f"{digit}.png").read_text(encoding="utf-8") == "2x4"
+        assert (padded_dir / f"{digit}.png").exists()
+        assert (padded_dir / f"{digit}.png").read_text(encoding="utf-8") == "4x6"
+
+
 def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) -> None:
     session_dir = tmp_path / "sessions" / "example"
     scriber_dir = session_dir / "01_scriber"
     scriber_dir.mkdir(parents=True)
 
     (scriber_dir / "actions.json").write_text(
-        '[{"actionId":"x","timeSinceVideoStartNs":1000000000}]', encoding="utf-8"
+        (
+            '[{"actionId":"x","timeSinceVideoStartNs":1000000000,'
+            '"secondaryOcrCropRect":{"left":2,"top":3,"width":6,"height":4}}]'
+        ),
+        encoding="utf-8",
     )
     (scriber_dir / "video.webm").write_text("placeholder", encoding="utf-8")
 
@@ -246,6 +315,9 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     assert (analytics / "ocr_ms_per_frame.txt").read_text(encoding="utf-8").strip() == "1000"
     assert (analytics / "ocr_ms_per_frame_table.csv").exists()
     assert (analytics / "check_number_ocr" / "screenshot_number_table.csv").exists()
+    assert (analytics / "ocr_digits" / "ocr_digits.png").exists()
+    assert (analytics / "ocr_digits" / "ocr_digits_otsu.png").exists()
+    assert (analytics / "ocr_digits_2").is_dir()
     assert (analytics / "screenshots" / "x_before.png").exists()
 
 

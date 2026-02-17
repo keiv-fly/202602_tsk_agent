@@ -484,12 +484,170 @@ def capture_action_screenshots(
     return updated_actions
 
 
+def _normalize_crop_rect(rect: dict | None) -> tuple[int, int, int, int] | None:
+    if not rect:
+        return None
+    try:
+        left = int(rect["left"])
+        top = int(rect["top"])
+        width = int(rect["width"])
+        height = int(rect["height"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return (left, top, width, height)
+
+
 def determine_crop_rect(actions: Iterable[dict]) -> tuple[int, int, int, int] | None:
     for action in actions:
-        rect = action.get("ocrCropRect")
+        rect = _normalize_crop_rect(action.get("ocrCropRect"))
         if rect:
-            return (int(rect["left"]), int(rect["top"]), int(rect["width"]), int(rect["height"]))
+            return rect
     return (0, 0, 120, 50)
+
+
+def determine_secondary_ocr_capture(
+    actions: Iterable[dict],
+    overlay_settle_delay_ms: int = 500,
+) -> tuple[tuple[int, int, int, int], int] | None:
+    for action in actions:
+        crop_rect = _normalize_crop_rect(action.get("secondaryOcrCropRect"))
+        if crop_rect is None:
+            continue
+        action_time_ns = action.get("timeSinceVideoStartNs") or 0
+        try:
+            action_time_ms = int(round(float(action_time_ns) / 1_000_000))
+        except (TypeError, ValueError):
+            action_time_ms = 0
+        target_ms = max(0, action_time_ms + max(0, int(overlay_settle_delay_ms)))
+        return (crop_rect, target_ms)
+    return None
+
+
+def _clear_digit_output_files(directory: Path) -> None:
+    for digit in range(10):
+        digit_path = directory / f"{digit}.png"
+        if digit_path.exists():
+            digit_path.unlink()
+    for legacy_digit_path in directory.glob("digit_*.png"):
+        legacy_digit_path.unlink()
+
+
+def _find_non_black_ranges(non_black_mask: np.ndarray) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    if non_black_mask.size == 0:
+        return ranges
+
+    start_idx: int | None = 0 if bool(non_black_mask[0]) else None
+    for idx in range(1, int(non_black_mask.size)):
+        if start_idx is None and bool(non_black_mask[idx]):
+            start_idx = idx
+            continue
+        if start_idx is not None and not bool(non_black_mask[idx]):
+            ranges.append((start_idx, idx))
+            start_idx = None
+
+    if start_idx is not None:
+        ranges.append((start_idx, int(non_black_mask.size)))
+    return ranges
+
+
+def _build_otsu_binary(cropped_overlay: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(cropped_overlay, cv2.COLOR_BGR2GRAY) if cropped_overlay.ndim == 3 else cropped_overlay
+    _, otsu_binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return otsu_binary
+
+
+def _extract_digit_crops(cropped_overlay: np.ndarray, otsu_binary: np.ndarray) -> list[np.ndarray]:
+    column_max = otsu_binary.max(axis=0)
+    non_black_columns = column_max > 0
+    column_ranges = _find_non_black_ranges(non_black_columns)
+
+    digit_crops: list[np.ndarray] = []
+    for start_col, end_col in column_ranges:
+        digit_crop = cropped_overlay[:, start_col:end_col]
+        if digit_crop.size == 0:
+            continue
+
+        digit_binary = otsu_binary[:, start_col:end_col]
+        row_max = digit_binary.max(axis=1)
+        non_black_rows = np.flatnonzero(row_max > 0)
+        if non_black_rows.size == 0:
+            continue
+
+        top = int(non_black_rows[0])
+        bottom = int(non_black_rows[-1]) + 1
+        digit_crops.append(digit_crop[top:bottom, :])
+
+    return digit_crops
+
+
+def _write_digit_crops(
+    digit_crops: Sequence[np.ndarray],
+    output_dir: Path,
+    padded_output_dir: Path,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    padded_output_dir.mkdir(parents=True, exist_ok=True)
+    _clear_digit_output_files(output_dir)
+    _clear_digit_output_files(padded_output_dir)
+
+    for digit, crop in enumerate(digit_crops[:10]):
+        output_path = output_dir / f"{digit}.png"
+        cv2.imwrite(str(output_path), crop)
+
+        border_value = 0 if crop.ndim == 2 else (0, 0, 0)
+        padded_crop = cv2.copyMakeBorder(
+            crop,
+            top=1,
+            bottom=1,
+            left=1,
+            right=1,
+            borderType=cv2.BORDER_CONSTANT,
+            value=border_value,
+        )
+        padded_path = padded_output_dir / f"{digit}.png"
+        cv2.imwrite(str(padded_path), padded_crop)
+
+
+def write_secondary_ocr_digits_image(
+    actions: Iterable[dict],
+    frame_results: Sequence[FrameOcrResult],
+    frames: Sequence,
+    output_path: Path,
+    overlay_settle_delay_ms: int = 500,
+) -> None:
+    digits_dir = output_path.parent
+    padded_digits_dir = digits_dir.with_name("ocr_digits_2")
+    otsu_output_path = digits_dir / "ocr_digits_otsu.png"
+
+    selection = determine_secondary_ocr_capture(
+        actions,
+        overlay_settle_delay_ms=overlay_settle_delay_ms,
+    )
+    if selection is None:
+        if output_path.exists():
+            output_path.unlink()
+        if otsu_output_path.exists():
+            otsu_output_path.unlink()
+        _clear_digit_output_files(digits_dir)
+        _clear_digit_output_files(padded_digits_dir)
+        return
+
+    crop_rect, target_ms = selection
+    frame_idx = find_frame_index(frame_results, target_ms, mode="at_or_after")
+    if frame_idx < 0 or frame_idx >= len(frames):
+        return
+    cropped = _crop_frame(frames[frame_idx], crop_rect)
+    if cropped is None or cropped.size == 0:
+        return
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(output_path), cropped)
+    otsu_binary = _build_otsu_binary(cropped)
+    cv2.imwrite(str(otsu_output_path), otsu_binary)
+    digit_crops = _extract_digit_crops(cropped, otsu_binary)
+    _write_digit_crops(digit_crops, output_dir=digits_dir, padded_output_dir=padded_digits_dir)
 
 
 def process_session(
@@ -527,6 +685,13 @@ def process_session(
         frames=frames,
         crop_rect=crop_rect,
         output_dir=analytics_dir / "check_number_ocr",
+    )
+    write_secondary_ocr_digits_image(
+        actions=actions,
+        frame_results=frame_results,
+        frames=frames,
+        output_path=analytics_dir / "ocr_digits" / "ocr_digits.png",
+        overlay_settle_delay_ms=500,
     )
     updated_actions = capture_action_screenshots(actions, frame_results, frames, screenshots_dir)
     save_actions(updated_actions, analytics_dir / "actions.json")
