@@ -73,6 +73,8 @@ export interface ActionRecord extends SelectorInfo {
   urlAfter: string | null;
   overlayRect?: OverlayCropRect | null;
   ocrCropRect?: OverlayCropRect | null;
+  secondaryOverlayRect?: OverlayCropRect | null;
+  secondaryOcrCropRect?: OverlayCropRect | null;
   target?: TargetMetadata;
   details?: Record<string, unknown>;
 }

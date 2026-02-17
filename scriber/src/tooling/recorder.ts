@@ -71,9 +71,13 @@ interface SnapshotCapturePayload {
   html: string;
   overlayRect: OverlayCropRect | null;
   textRect: OverlayCropRect | null;
+  secondaryOverlayRect: OverlayCropRect | null;
+  secondaryTextRect: OverlayCropRect | null;
 }
 
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
+const FRAME_OVERLAY_ID = "__scriberFrameOverlay";
+const SECONDARY_FRAME_OVERLAY_ID = "__scriberSecondFrameOverlay";
 const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
   const byStep = left.stepNumber - right.stepNumber;
   if (byStep !== 0) {
@@ -580,6 +584,19 @@ export class ScriberRecorder {
     }
   }
 
+  private shouldIgnoreSnapshotErrorReason(reason: string) {
+    if (this.closing) {
+      return true;
+    }
+    const normalized = reason.toLowerCase();
+    return (
+      normalized.includes("execution context was destroyed") ||
+      normalized.includes("target page, context or browser has been closed") ||
+      normalized.includes("target closed") ||
+      normalized.includes("cannot find context with specified id")
+    );
+  }
+
   private async safeCaptureSnapshot(
     page: Page,
     action: ActionRecord,
@@ -590,13 +607,19 @@ export class ScriberRecorder {
       if (descriptor.phase === "at") {
         action.overlayRect = snapshotCapture.overlayRect;
         action.ocrCropRect = snapshotCapture.textRect ?? snapshotCapture.overlayRect;
+        action.secondaryOverlayRect = snapshotCapture.secondaryOverlayRect;
+        action.secondaryOcrCropRect =
+          snapshotCapture.secondaryTextRect ?? snapshotCapture.secondaryOverlayRect;
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      if (this.shouldIgnoreSnapshotErrorReason(reason)) {
+        return;
+      }
       console.warn(
         `[scriber][snapshot] failed phase=${descriptor.phase} step=${descriptor.stepNumber} actionId=${descriptor.actionId} pageId=${descriptor.pageId} reason=${reason}`
       );
-      // Ignore snapshot errors (e.g., page closed), but always log them for debugging.
+      // Keep warnings for unexpected capture failures only.
     }
   }
 
@@ -645,25 +668,36 @@ export class ScriberRecorder {
       await page.evaluate(
         ({ quietWindowMs, quietTimeoutMs }) => {
           return new Promise<void>((resolve) => {
-            const timeoutId = setTimeout(() => {
+            let settled = false;
+            let quietTimer: number | undefined;
+            const timeoutId = window.setTimeout(() => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              if (quietTimer) {
+                window.clearTimeout(quietTimer);
+              }
               observer.disconnect();
               resolve();
             }, quietTimeoutMs);
 
-            let quietTimer: number | undefined;
-            const resetQuietTimer = () => {
+            const observer = new MutationObserver(() => {
+              if (settled) {
+                return;
+              }
               if (quietTimer) {
                 window.clearTimeout(quietTimer);
               }
               quietTimer = window.setTimeout(() => {
-                clearTimeout(timeoutId);
+                if (settled) {
+                  return;
+                }
+                settled = true;
+                window.clearTimeout(timeoutId);
                 observer.disconnect();
                 resolve();
               }, quietWindowMs);
-            };
-
-            const observer = new MutationObserver(() => {
-              resetQuietTimer();
             });
             observer.observe(document.documentElement, {
               childList: true,
@@ -671,7 +705,15 @@ export class ScriberRecorder {
               attributes: true,
               characterData: true
             });
-            resetQuietTimer();
+            quietTimer = window.setTimeout(() => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              window.clearTimeout(timeoutId);
+              observer.disconnect();
+              resolve();
+            }, quietWindowMs);
           });
         },
         {
@@ -709,96 +751,124 @@ export class ScriberRecorder {
   }
 
   private async captureSnapshotPayload(page: Page): Promise<SnapshotCapturePayload> {
-    return await page.evaluate(() => {
-      const clone = document.documentElement.cloneNode(true) as HTMLElement;
-      const inputs = clone.querySelectorAll("input");
-      inputs.forEach((input) => {
-        if (
-          input instanceof HTMLInputElement &&
-          input.type.toLowerCase() === "password"
-        ) {
-          input.value = "********";
-          input.setAttribute("value", "********");
+    return await page.evaluate(
+      ({ primaryOverlayId, secondaryOverlayId }) => {
+        const clone = document.documentElement.cloneNode(true) as HTMLElement;
+        const inputs = clone.querySelectorAll("input");
+        inputs.forEach((input) => {
+          if (
+            input instanceof HTMLInputElement &&
+            input.type.toLowerCase() === "password"
+          ) {
+            input.value = "********";
+            input.setAttribute("value", "********");
+          }
+        });
+
+        const dpr = window.devicePixelRatio || 1;
+        const viewportWidth = Math.max(1, Math.round(window.innerWidth * dpr));
+        const viewportHeight = Math.max(1, Math.round(window.innerHeight * dpr));
+        let overlayRect: OverlayCropRect | null = null;
+        let textRect: OverlayCropRect | null = null;
+        let secondaryOverlayRect: OverlayCropRect | null = null;
+        let secondaryTextRect: OverlayCropRect | null = null;
+
+        const overlays = [
+          { overlay: document.getElementById(primaryOverlayId), isSecondary: false },
+          { overlay: document.getElementById(secondaryOverlayId), isSecondary: true }
+        ];
+
+        for (const entry of overlays) {
+          if (!(entry.overlay instanceof HTMLElement)) {
+            continue;
+          }
+
+          const bounds = entry.overlay.getBoundingClientRect();
+          const style = window.getComputedStyle(entry.overlay);
+          const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+          const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+          const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
+          const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+          const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+          const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+          const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+          const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+
+          const overlayRawLeft = Math.floor(bounds.left * dpr);
+          const overlayRawTop = Math.floor(bounds.top * dpr);
+          const overlayRawRight = Math.ceil((bounds.left + bounds.width) * dpr);
+          const overlayRawBottom = Math.ceil((bounds.top + bounds.height) * dpr);
+          const overlayClampedLeft = Math.min(Math.max(0, overlayRawLeft), viewportWidth - 1);
+          const overlayClampedTop = Math.min(Math.max(0, overlayRawTop), viewportHeight - 1);
+          const overlayClampedRight = Math.min(
+            Math.max(overlayClampedLeft + 1, overlayRawRight),
+            viewportWidth
+          );
+          const overlayClampedBottom = Math.min(
+            Math.max(overlayClampedTop + 1, overlayRawBottom),
+            viewportHeight
+          );
+
+          const contentLeft = bounds.left + borderLeft + paddingLeft;
+          const contentTop = bounds.top + borderTop + paddingTop;
+          const contentWidth = Math.max(
+            1,
+            bounds.width - borderLeft - borderRight - paddingLeft - paddingRight
+          );
+          const contentHeight = Math.max(
+            1,
+            bounds.height - borderTop - borderBottom - paddingTop - paddingBottom
+          );
+          const textRawLeft = Math.floor(contentLeft * dpr);
+          const textRawTop = Math.floor(contentTop * dpr);
+          const textRawRight = Math.ceil((contentLeft + contentWidth) * dpr);
+          const textRawBottom = Math.ceil((contentTop + contentHeight) * dpr);
+          const textClampedLeft = Math.min(Math.max(0, textRawLeft), viewportWidth - 1);
+          const textClampedTop = Math.min(Math.max(0, textRawTop), viewportHeight - 1);
+          const textClampedRight = Math.min(
+            Math.max(textClampedLeft + 1, textRawRight),
+            viewportWidth
+          );
+          const textClampedBottom = Math.min(
+            Math.max(textClampedTop + 1, textRawBottom),
+            viewportHeight
+          );
+
+          const measuredOverlayRect: OverlayCropRect = {
+            left: overlayClampedLeft,
+            top: overlayClampedTop,
+            width: Math.max(1, overlayClampedRight - overlayClampedLeft),
+            height: Math.max(1, overlayClampedBottom - overlayClampedTop)
+          };
+          const measuredTextRect: OverlayCropRect = {
+            left: textClampedLeft,
+            top: textClampedTop,
+            width: Math.max(1, textClampedRight - textClampedLeft),
+            height: Math.max(1, textClampedBottom - textClampedTop)
+          };
+
+          if (entry.isSecondary) {
+            secondaryOverlayRect = measuredOverlayRect;
+            secondaryTextRect = measuredTextRect;
+          } else {
+            overlayRect = measuredOverlayRect;
+            textRect = measuredTextRect;
+          }
         }
-      });
 
-      const dpr = window.devicePixelRatio || 1;
-      const viewportWidth = Math.max(1, Math.round(window.innerWidth * dpr));
-      const viewportHeight = Math.max(1, Math.round(window.innerHeight * dpr));
-      let overlayRect: OverlayCropRect | null = null;
-      let textRect: OverlayCropRect | null = null;
-      const overlay = document.getElementById("__scriberFrameOverlay");
-      if (overlay instanceof HTMLElement) {
-        const bounds = overlay.getBoundingClientRect();
-        const style = window.getComputedStyle(overlay);
-        const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
-        const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
-        const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
-        const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
-        const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
-        const paddingRight = Number.parseFloat(style.paddingRight) || 0;
-        const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-        const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
-
-        const overlayRawLeft = Math.floor(bounds.left * dpr);
-        const overlayRawTop = Math.floor(bounds.top * dpr);
-        const overlayRawRight = Math.ceil((bounds.left + bounds.width) * dpr);
-        const overlayRawBottom = Math.ceil((bounds.top + bounds.height) * dpr);
-        const overlayClampedLeft = Math.min(Math.max(0, overlayRawLeft), viewportWidth - 1);
-        const overlayClampedTop = Math.min(Math.max(0, overlayRawTop), viewportHeight - 1);
-        const overlayClampedRight = Math.min(
-          Math.max(overlayClampedLeft + 1, overlayRawRight),
-          viewportWidth
-        );
-        const overlayClampedBottom = Math.min(
-          Math.max(overlayClampedTop + 1, overlayRawBottom),
-          viewportHeight
-        );
-        overlayRect = {
-          left: overlayClampedLeft,
-          top: overlayClampedTop,
-          width: Math.max(1, overlayClampedRight - overlayClampedLeft),
-          height: Math.max(1, overlayClampedBottom - overlayClampedTop)
+        return {
+          html: clone.outerHTML,
+          overlayRect,
+          textRect,
+          secondaryOverlayRect,
+          secondaryTextRect
         };
-
-        const contentLeft = bounds.left + borderLeft + paddingLeft;
-        const contentTop = bounds.top + borderTop + paddingTop;
-        const contentWidth = Math.max(
-          1,
-          bounds.width - borderLeft - borderRight - paddingLeft - paddingRight
-        );
-        const contentHeight = Math.max(
-          1,
-          bounds.height - borderTop - borderBottom - paddingTop - paddingBottom
-        );
-        const textRawLeft = Math.floor(contentLeft * dpr);
-        const textRawTop = Math.floor(contentTop * dpr);
-        const textRawRight = Math.ceil((contentLeft + contentWidth) * dpr);
-        const textRawBottom = Math.ceil((contentTop + contentHeight) * dpr);
-        const textClampedLeft = Math.min(Math.max(0, textRawLeft), viewportWidth - 1);
-        const textClampedTop = Math.min(Math.max(0, textRawTop), viewportHeight - 1);
-        const textClampedRight = Math.min(
-          Math.max(textClampedLeft + 1, textRawRight),
-          viewportWidth
-        );
-        const textClampedBottom = Math.min(
-          Math.max(textClampedTop + 1, textRawBottom),
-          viewportHeight
-        );
-        textRect = {
-          left: textClampedLeft,
-          top: textClampedTop,
-          width: Math.max(1, textClampedRight - textClampedLeft),
-          height: Math.max(1, textClampedBottom - textClampedTop)
-        };
+      },
+      {
+        primaryOverlayId: FRAME_OVERLAY_ID,
+        secondaryOverlayId: SECONDARY_FRAME_OVERLAY_ID
       }
-
-      return {
-        html: clone.outerHTML,
-        overlayRect,
-        textRect
-      };
-    });
+    );
   }
 
   private nextStepNumber() {
@@ -859,6 +929,10 @@ const createInitScript = (sessionStartMs: number) => `
   const SCRIBER_SESSION_START_MS = ${sessionStartMs};
   const SCRIBER_OVERLAY_MAX_MS = 999999;
   const SCRIBER_NS_PER_MS = 1_000_000;
+  const SCRIBER_SECONDARY_OVERLAY_TEXT = '0123456789';
+  const SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS = 6000;
+  const SCRIBER_PRIMARY_OVERLAY_ID = ${JSON.stringify(FRAME_OVERLAY_ID)};
+  const SCRIBER_SECONDARY_OVERLAY_ID = ${JSON.stringify(SECONDARY_FRAME_OVERLAY_ID)};
 
   const getEpochMs = () => performance.timeOrigin + performance.now();
 
@@ -981,11 +1055,12 @@ const createInitScript = (sessionStartMs: number) => `
   };
 
   let frameOverlay = null;
+  let secondaryFrameOverlay = null;
   const ensureFrameOverlay = () => {
     if (frameOverlay instanceof HTMLElement && frameOverlay.isConnected) {
       return frameOverlay;
     }
-    const existing = document.getElementById('__scriberFrameOverlay');
+    const existing = document.getElementById(SCRIBER_PRIMARY_OVERLAY_ID);
     if (existing instanceof HTMLElement) {
       frameOverlay = existing;
       return frameOverlay;
@@ -995,7 +1070,7 @@ const createInitScript = (sessionStartMs: number) => `
       return null;
     }
     frameOverlay = document.createElement('div');
-    frameOverlay.id = '__scriberFrameOverlay';
+    frameOverlay.id = SCRIBER_PRIMARY_OVERLAY_ID;
     frameOverlay.className = 'ocr-digits';
     frameOverlay.setAttribute('aria-hidden', 'true');
     Object.assign(frameOverlay.style, {
@@ -1027,13 +1102,68 @@ const createInitScript = (sessionStartMs: number) => `
     return frameOverlay;
   };
 
+  const ensureSecondaryFrameOverlay = () => {
+    if (secondaryFrameOverlay instanceof HTMLElement && secondaryFrameOverlay.isConnected) {
+      return secondaryFrameOverlay;
+    }
+    const existing = document.getElementById(SCRIBER_SECONDARY_OVERLAY_ID);
+    if (existing instanceof HTMLElement) {
+      secondaryFrameOverlay = existing;
+      return secondaryFrameOverlay;
+    }
+    const root = document.documentElement || document.body;
+    if (!root) {
+      return null;
+    }
+    secondaryFrameOverlay = document.createElement('div');
+    secondaryFrameOverlay.id = SCRIBER_SECONDARY_OVERLAY_ID;
+    secondaryFrameOverlay.className = 'ocr-digits-secondary';
+    secondaryFrameOverlay.setAttribute('aria-hidden', 'true');
+    secondaryFrameOverlay.textContent = SCRIBER_SECONDARY_OVERLAY_TEXT;
+    Object.assign(secondaryFrameOverlay.style, {
+      display: 'inline-block',
+      position: 'fixed',
+      top: '40px',
+      left: '6px',
+      width: 'auto',
+      minWidth: '10ch',
+      padding: '3px 5px',
+      boxSizing: 'content-box',
+      whiteSpace: 'pre',
+      textAlign: 'right',
+      backgroundColor: '#000000',
+      color: '#FFFFFF',
+      fontFamily: '"Roboto Mono", monospace',
+      fontWeight: '700',
+      fontSize: '22px',
+      lineHeight: '1',
+      letterSpacing: '0.06em',
+      fontVariantNumeric: 'tabular-nums lining-nums',
+      WebkitTextStroke: '0.5px #000000',
+      textShadow: 'none',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: '2147483647',
+      overflow: 'visible',
+    });
+    root.appendChild(secondaryFrameOverlay);
+    return secondaryFrameOverlay;
+  };
+
   const updateFrameOverlay = () => {
-    const overlay = ensureFrameOverlay();
-    if (!overlay) {
+    const primaryOverlay = ensureFrameOverlay();
+    const secondaryOverlay = ensureSecondaryFrameOverlay();
+    if (!primaryOverlay && !secondaryOverlay) {
       return;
     }
     const elapsedMs = getOverlayMs(getEpochMs());
-    overlay.textContent = String(elapsedMs).padStart(6, '0');
+    if (primaryOverlay) {
+      primaryOverlay.textContent = String(elapsedMs).padStart(6, '0');
+    }
+    if (secondaryOverlay) {
+      secondaryOverlay.style.display =
+        elapsedMs >= SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS ? 'none' : 'inline-block';
+    }
   };
 
   const startFrameOverlayLoop = () => {
