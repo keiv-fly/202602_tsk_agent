@@ -74,9 +74,6 @@ interface SnapshotCapturePayload {
 }
 
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
-const DEBUG_SNAPSHOT_LOGS_ENABLED =
-  process.env.SCRIBER_DEBUG_SNAPSHOT_LOGS === "1" ||
-  process.env.SCRIBER_DEBUG_SNAPSHOT_LOGS === "true";
 const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
   const byStep = left.stepNumber - right.stepNumber;
   if (byStep !== 0) {
@@ -595,13 +592,11 @@ export class ScriberRecorder {
         action.ocrCropRect = snapshotCapture.textRect ?? snapshotCapture.overlayRect;
       }
     } catch (error) {
-      if (DEBUG_SNAPSHOT_LOGS_ENABLED) {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[scriber][snapshot] failed phase=${descriptor.phase} step=${descriptor.stepNumber} actionId=${descriptor.actionId} pageId=${descriptor.pageId} reason=${reason}`
-        );
-      }
-      // Ignore snapshot errors (e.g., page closed), unless debug logs are enabled.
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[scriber][snapshot] failed phase=${descriptor.phase} step=${descriptor.stepNumber} actionId=${descriptor.actionId} pageId=${descriptor.pageId} reason=${reason}`
+      );
+      // Ignore snapshot errors (e.g., page closed), but always log them for debugging.
     }
   }
 
