@@ -97,22 +97,28 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     assert (analytics / "screenshots" / "x_before.png").exists()
 
 
-def test_parse_args_defaults_to_last_mode() -> None:
+def test_parse_args_defaults_to_sessions_dir() -> None:
     args = parse_args([])
-    assert args.sessions_dir == Path("sessions")
-    assert args.last is True
+    assert args.input_dir == Path("sessions")
 
 
-def test_parse_args_all_mode_and_sessions_dir_positional() -> None:
-    args = parse_args(["my_sessions", "--all"])
-    assert args.sessions_dir == Path("my_sessions")
-    assert args.last is False
+def test_parse_args_accepts_input_dir_positional() -> None:
+    args = parse_args(["my_sessions"])
+    assert args.input_dir == Path("my_sessions")
 
 
-def test_resolve_session_dirs_returns_only_last_when_requested(tmp_path: Path) -> None:
+def test_resolve_session_dirs_returns_single_session_if_input_is_session(tmp_path: Path) -> None:
+    session_dir = tmp_path / "20260216_a"
+    (session_dir / "01_scriber").mkdir(parents=True)
+
+    selected = resolve_session_dirs(session_dir)
+    assert selected == [session_dir]
+
+
+def test_resolve_session_dirs_returns_all_sessions_inside_parent(tmp_path: Path) -> None:
     sessions_dir = tmp_path / "sessions"
-    (sessions_dir / "20260216_a").mkdir(parents=True)
-    (sessions_dir / "20260216_b").mkdir(parents=True)
+    (sessions_dir / "20260216_a" / "01_scriber").mkdir(parents=True)
+    (sessions_dir / "20260216_b" / "01_scriber").mkdir(parents=True)
 
-    selected = resolve_session_dirs(sessions_dir, use_last=True)
-    assert selected == [sessions_dir / "20260216_b"]
+    selected = resolve_session_dirs(sessions_dir)
+    assert selected == [sessions_dir / "20260216_a", sessions_dir / "20260216_b"]

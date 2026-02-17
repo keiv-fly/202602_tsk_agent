@@ -204,36 +204,38 @@ def process_session(session_dir: Path, min_confidence: float) -> None:
     save_actions(updated_actions, analytics_dir / "actions.json")
 
 
-def resolve_session_dirs(sessions_dir: Path, use_last: bool) -> list[Path]:
-    session_dirs = sorted((p for p in sessions_dir.iterdir() if p.is_dir()), key=lambda p: p.name)
+def is_session_dir(path: Path) -> bool:
+    return (path / "01_scriber").is_dir()
+
+
+def resolve_session_dirs(target_dir: Path) -> list[Path]:
+    if is_session_dir(target_dir):
+        return [target_dir]
+
+    session_dirs = sorted(
+        (p for p in target_dir.iterdir() if p.is_dir() and is_session_dir(p)),
+        key=lambda p: p.name,
+    )
     if not session_dirs:
-        raise RuntimeError(f"No session directories found in: {sessions_dir}")
-    return [session_dirs[-1]] if use_last else session_dirs
+        raise RuntimeError(
+            f"No session directories found in: {target_dir}. "
+            "Expected a session folder with 01_scriber or a parent directory containing sessions."
+        )
+    return session_dirs
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create analytics outputs and screenshots from Scriber sessions.")
     parser.add_argument(
-        "sessions_dir",
+        "input_dir",
         type=Path,
         nargs="?",
         default=Path("sessions"),
-        help="Path to the sessions directory.",
+        help=(
+            "Path to process. Can be either a single session folder "
+            "(containing 01_scriber) or a parent directory containing session folders."
+        ),
     )
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        "--last",
-        action="store_true",
-        dest="last",
-        help="Process only the last session directory (default).",
-    )
-    mode_group.add_argument(
-        "--all",
-        action="store_false",
-        dest="last",
-        help="Process all session directories.",
-    )
-    parser.set_defaults(last=True)
     parser.add_argument(
         "--min-confidence",
         type=float,
@@ -245,11 +247,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    sessions_dir: Path = args.sessions_dir
-    if not sessions_dir.exists():
-        raise RuntimeError(f"Sessions directory does not exist: {sessions_dir}")
+    input_dir: Path = args.input_dir
+    if not input_dir.exists():
+        raise RuntimeError(f"Input directory does not exist: {input_dir}")
+    if not input_dir.is_dir():
+        raise RuntimeError(f"Input path is not a directory: {input_dir}")
 
-    for session_dir in resolve_session_dirs(sessions_dir, use_last=args.last):
+    for session_dir in resolve_session_dirs(input_dir):
         print(f"Session directory: {session_dir.name}")
         process_session(session_dir, min_confidence=args.min_confidence)
 
