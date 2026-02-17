@@ -1021,7 +1021,7 @@ const createInitScript = (sessionStartMs: number) => `
       return;
     }
     const elapsedMs = getOverlayMs(getEpochMs());
-    overlay.textContent = String(elapsedMs);
+    overlay.textContent = String(elapsedMs).padStart(6, '0');
   };
 
   const startFrameOverlayLoop = () => {

@@ -94,7 +94,7 @@ describe("scriber integration", () => {
     });
 
     expect(overlay).toBeTruthy();
-    expect(overlay?.text).toMatch(/^\d{1,6}$/);
+    expect(overlay?.text).toMatch(/^\d{6}$/);
     expect(overlay?.position).toBe("fixed");
     expect(overlay?.top).toBe("6px");
     expect(overlay?.left).toBe("6px");
