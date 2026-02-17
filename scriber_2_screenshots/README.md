@@ -7,15 +7,15 @@ Generate action-aligned screenshots and analytics from Scriber session recording
 The entrypoint `generate_screenshots.py`:
 
 - reads `actions.json` and `video.webm` from each session's `01_scriber` folder
-- runs OCR on video frames to estimate each frame timestamp
+- uses OpenCV template matching to read the overlay digits on each frame
+- derives template style values from `scriber/src/tooling/recorder.ts` so matching stays aligned with Scriber CSS
 - captures three screenshots per action (`before`, `at`, `after`)
 - writes analytics artifacts to `02_scriber_analytics`
 
 ## Prerequisites
 
 - Python 3.10+
-- Tesseract OCR installed and available on `PATH`
-  - Windows: install Tesseract and reopen your terminal so `tesseract --version` works
+- No Tesseract install required
 
 ## Install Python dependencies
 
@@ -24,7 +24,7 @@ From the repository root:
 ```bash
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install opencv-python pytesseract tqdm pytest
+pip install opencv-python tqdm pytest
 ```
 
 ## Run
@@ -49,10 +49,16 @@ Examples:
   python -m scriber_2_screenshots.generate_screenshots sessions/20260216_2151_www.thegoodride.com
   ```
 
-- set OCR confidence threshold (default: `92`):
+- set template score threshold (default: `0.43`):
 
   ```bash
-  python -m scriber_2_screenshots.generate_screenshots sessions --min-confidence 90
+  python -m scriber_2_screenshots.generate_screenshots sessions --min-template-score 0.40
+  ```
+
+- override the recorder source file used to derive template style:
+
+  ```bash
+  python -m scriber_2_screenshots.generate_screenshots sessions --recorder-ts-path scriber/src/tooling/recorder.ts
   ```
 
 ## Expected input layout

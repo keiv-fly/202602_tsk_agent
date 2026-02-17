@@ -12,7 +12,7 @@ The `scriber/` directory contains the Playwright-based session recorder scaffold
 
 ## Scriber 2 Screenshots
 
-The `scriber_2_screenshots/` directory contains the Python OCR pipeline that turns recorded Scriber sessions into per-action screenshots and analytics files.
+The `scriber_2_screenshots/` directory contains the Python OpenCV template-matching pipeline that turns recorded Scriber sessions into per-action screenshots and analytics files.
 
 - Full guide: `scriber_2_screenshots/README.md`
 - Quick run (from repo root): `python generate_screenshots.py`

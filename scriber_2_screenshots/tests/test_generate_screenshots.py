@@ -1,25 +1,79 @@
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from scriber_2_screenshots.generate_screenshots import (
     FrameOcrResult,
+    OverlayTemplateStyle,
+    _estimate_font_scale,
+    _render_digit_template,
+    build_digit_templates,
     capture_action_screenshots,
     determine_crop_rect,
-    extract_ms_from_ocr_data,
     find_frame_index,
+    load_overlay_template_style,
+    match_overlay_digits,
     parse_args,
     process_session,
     resolve_session_dirs,
 )
 
 
-def test_extract_ms_from_ocr_data_respects_confidence_threshold() -> None:
-    ocr_data = {
-        "text": ["", "1234", "9999"],
-        "conf": ["-1", "91", "96"],
-    }
+def test_load_overlay_template_style_parses_recorder_css_values(tmp_path: Path) -> None:
+    recorder_ts = tmp_path / "recorder.ts"
+    recorder_ts.write_text(
+        "\n".join(
+            [
+                "frameOverlay.style.width = '7ch';",
+                "frameOverlay.style.fontSize = '20px';",
+                "frameOverlay.style.lineHeight = '1.2';",
+                "frameOverlay.style.letterSpacing = '0.08em';",
+                "frameOverlay.style.fontWeight = '600';",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
-    assert extract_ms_from_ocr_data(ocr_data, min_confidence=92) == 9999
-    assert extract_ms_from_ocr_data(ocr_data, min_confidence=97) is None
+    style = load_overlay_template_style(recorder_ts)
+
+    assert style == OverlayTemplateStyle(
+        digit_count=7,
+        font_size_px=20,
+        line_height=1.2,
+        letter_spacing_em=0.08,
+        font_weight=600,
+    )
+
+
+def test_match_overlay_digits_reads_synthetic_roi() -> None:
+    style = OverlayTemplateStyle(digit_count=6)
+    crop_rect = (0, 0, 120, 48)
+    templates = build_digit_templates(crop_rect, style)
+    height = crop_rect[3]
+    width = crop_rect[2]
+    boundaries = np.linspace(0, width, style.digit_count + 1, dtype=np.int32)
+    expected_text = "012345"
+    font_scale = _estimate_font_scale(crop_rect[2], crop_rect[3], style)
+
+    gray = np.zeros((height, width), dtype=np.uint8)
+    for i, digit in enumerate(expected_text):
+        left = int(boundaries[i])
+        right = int(boundaries[i + 1])
+        cell = gray[:, left:right]
+        rendered = _render_digit_template(
+            digit=digit,
+            cell_width=max(1, right - left),
+            cell_height=height,
+            font_scale=font_scale,
+            font_weight=style.font_weight,
+        )
+        cell[:, :] = rendered
+
+    roi = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    result = match_overlay_digits(roi, templates=templates, digit_count=style.digit_count, min_score=0.1)
+
+    assert result.value == int(expected_text)
 
 
 def test_find_frame_index_before_and_after_modes() -> None:
@@ -76,7 +130,7 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     fake_results = [FrameOcrResult(frame_index=0, ms=1000)]
     fake_frames = ["frame"]
 
-    def fake_run_ocr_on_video(video_path, crop_rect, min_confidence):
+    def fake_run_template_matching_on_video(video_path, crop_rect, style, min_score):
         return fake_results, fake_frames
 
     def fake_imwrite(path: str, frame) -> bool:
@@ -84,12 +138,12 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
         return True
 
     monkeypatch.setattr(
-        "scriber_2_screenshots.generate_screenshots.run_ocr_on_video",
-        fake_run_ocr_on_video,
+        "scriber_2_screenshots.generate_screenshots.run_template_matching_on_video",
+        fake_run_template_matching_on_video,
     )
     monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
 
-    process_session(session_dir, min_confidence=92)
+    process_session(session_dir, min_template_score=0.2)
 
     analytics = session_dir / "02_scriber_analytics"
     assert (analytics / "actions.json").exists()
@@ -105,6 +159,7 @@ def test_parse_args_defaults_to_sessions_dir() -> None:
 def test_parse_args_accepts_input_dir_positional() -> None:
     args = parse_args(["my_sessions"])
     assert args.input_dir == Path("my_sessions")
+    assert args.min_template_score == 0.43
 
 
 def test_resolve_session_dirs_returns_single_session_if_input_is_session(tmp_path: Path) -> None:
