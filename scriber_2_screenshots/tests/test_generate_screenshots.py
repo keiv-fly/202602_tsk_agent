@@ -52,43 +52,46 @@ def test_parse_overlay_digits_allows_up_to_default_digit_count() -> None:
     assert parse_overlay_digits("1234567") is None
 
 
-def test_match_overlay_digits_reads_tesseract_result(monkeypatch) -> None:
-    class FakeOutput:
-        DICT = "DICT"
+def test_match_overlay_digits_uses_template_similarity() -> None:
+    roi = np.zeros((12, 60), dtype=np.uint8)
+    templates: dict[str, np.ndarray] = {}
+    cursor = 1
 
-    class FakePytesseract:
-        Output = FakeOutput
+    for idx, digit in enumerate("012345"):
+        glyph = np.zeros((6, 5), dtype=np.uint8)
+        glyph[0, 0] = 255
+        glyph[-1, -1] = 255
+        for col in range(glyph.shape[1]):
+            glyph[(idx + col) % glyph.shape[0], col] = 255
+        roi[2:8, cursor : cursor + glyph.shape[1]] = glyph
+        templates[digit] = np.pad(glyph, ((1, 1), (1, 1)), mode="constant", constant_values=0)
+        cursor += glyph.shape[1] + 1
 
-        @staticmethod
-        def image_to_data(image, config, output_type):
-            assert "--psm 7" in config
-            return {"text": ["012345"], "conf": ["94"]}
-
-    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.pytesseract", FakePytesseract)
-
-    roi = np.zeros((16, 64, 3), dtype=np.uint8)
-    result = match_overlay_digits(roi, templates={}, digit_count=6, min_score=0.1)
+    result = match_overlay_digits(roi, templates=templates, digit_count=6, min_score=0.1)
     assert result.value == 12345
-    assert result.score == 0.94
+    assert result.score > 0.99
+    assert len(result.digit_metrics) == 6
+    assert all(metric is not None and metric > 0.99 for metric in result.digit_metrics)
 
 
-def test_match_overlay_digits_respects_min_confidence_threshold(monkeypatch) -> None:
-    class FakeOutput:
-        DICT = "DICT"
+def test_match_overlay_digits_respects_min_similarity_threshold() -> None:
+    roi = np.zeros((12, 60), dtype=np.uint8)
+    templates: dict[str, np.ndarray] = {}
+    cursor = 1
 
-    class FakePytesseract:
-        Output = FakeOutput
+    for idx, digit in enumerate("012345"):
+        glyph = np.zeros((6, 5), dtype=np.uint8)
+        glyph[0, 0] = 255
+        glyph[-1, -1] = 255
+        for col in range(glyph.shape[1]):
+            glyph[(idx + col) % glyph.shape[0], col] = 255
+        roi[2:8, cursor : cursor + glyph.shape[1]] = glyph
+        templates[digit] = np.pad(glyph, ((1, 1), (1, 1)), mode="constant", constant_values=0)
+        cursor += glyph.shape[1] + 1
 
-        @staticmethod
-        def image_to_data(image, config, output_type):
-            return {"text": ["999"], "conf": ["12"]}
-
-    monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.pytesseract", FakePytesseract)
-
-    roi = np.zeros((12, 32, 3), dtype=np.uint8)
-    result = match_overlay_digits(roi, templates={}, digit_count=6, min_score=0.2)
+    result = match_overlay_digits(roi, templates=templates, digit_count=6, min_score=1.01)
     assert result.value is None
-    assert result.score == 0.12
+    assert result.score <= 1.0
 
 
 def test_find_frame_index_before_and_after_modes() -> None:
@@ -127,28 +130,32 @@ def test_capture_action_screenshots_writes_three_images(tmp_path: Path, monkeypa
     assert updated[0]["screenshotTimesMs"] == {"before": 200, "at": 500, "after": 1300}
 
 
-def test_write_frame_ms_table_file_writes_ms_and_probability(tmp_path: Path) -> None:
+def test_write_frame_ms_table_file_writes_ms_and_per_digit_metrics(tmp_path: Path) -> None:
     output_path = tmp_path / "ocr_ms_per_frame_table.csv"
     write_frame_ms_table_file(
         [
-            FrameOcrResult(frame_index=0, ms=100, match_probability=0.81234),
-            FrameOcrResult(frame_index=1, ms=None, match_probability=0.0),
+            FrameOcrResult(
+                frame_index=0,
+                ms=100,
+                digit_match_metrics=(0.81234, 0.91, 0.92, 0.93, 0.94, 0.95),
+            ),
+            FrameOcrResult(frame_index=1, ms=None, digit_match_metrics=(0.0, 0.0)),
         ],
         output_path,
     )
 
     content = output_path.read_text(encoding="utf-8")
-    assert "id,ocr_ms,match_probability" in content
-    assert "0,100,0.812340" in content
-    assert "1,None,0.000000" in content
+    assert "id,ocr_ms,digit_1_match,digit_2_match,digit_3_match,digit_4_match,digit_5_match,digit_6_match" in content
+    assert "0,100,0.812340,0.910000,0.920000,0.930000,0.940000,0.950000" in content
+    assert "1,None,0.000000,0.000000,,,," in content
 
 
 def test_write_number_check_outputs_writes_crops_and_table(tmp_path: Path, monkeypatch) -> None:
     frame_results = [
         FrameOcrResult(frame_index=0, ms=0),
-        FrameOcrResult(frame_index=1, ms=900),
-        FrameOcrResult(frame_index=2, ms=1400),
-        FrameOcrResult(frame_index=3, ms=2200),
+        FrameOcrResult(frame_index=1, ms=120),
+        FrameOcrResult(frame_index=2, ms=140),
+        FrameOcrResult(frame_index=3, ms=160),
     ]
     frames = [np.zeros((10, 20, 3), dtype=np.uint8) for _ in range(4)]
 
@@ -163,20 +170,23 @@ def test_write_number_check_outputs_writes_crops_and_table(tmp_path: Path, monke
         frames=frames,
         crop_rect=(2, 3, 6, 4),
         output_dir=tmp_path,
+        frame_rate_fps=1.0,
     )
 
     assert (tmp_path / "second_000000.png").exists()
     assert (tmp_path / "second_000001.png").exists()
     assert (tmp_path / "second_000002.png").exists()
+    assert (tmp_path / "second_000003.png").exists()
 
     table_content = (tmp_path / "screenshot_number_table.csv").read_text(encoding="utf-8")
-    assert "screenshot_name,id,ocr_ms" in table_content
+    assert "screenshot_name,id,ocr_ms,digit_1_match,digit_2_match,digit_3_match,digit_4_match,digit_5_match,digit_6_match" in table_content
     assert "second_000000.png,0,0" in table_content
-    assert "second_000001.png,1,900" in table_content
-    assert "second_000002.png,2,1400" in table_content
+    assert "second_000001.png,1,120" in table_content
+    assert "second_000002.png,2,140" in table_content
+    assert "second_000003.png,3,160" in table_content
 
 
-def test_write_number_check_outputs_uses_last_frame_ms_and_cleans_stale_images(
+def test_write_number_check_outputs_uses_frame_rate_and_cleans_stale_images(
     tmp_path: Path, monkeypatch
 ) -> None:
     frame_results = [
@@ -199,11 +209,12 @@ def test_write_number_check_outputs_uses_last_frame_ms_and_cleans_stale_images(
         frames=frames,
         crop_rect=(2, 3, 6, 4),
         output_dir=tmp_path,
+        frame_rate_fps=1.0,
     )
 
     assert not stale_image.exists()
     table_lines = (tmp_path / "screenshot_number_table.csv").read_text(encoding="utf-8").splitlines()
-    assert len(table_lines) == 4  # header + seconds 0,1,2
+    assert len(table_lines) == 4  # header + seconds 0,1,2 at 1fps with 3 frames
 
 
 def test_determine_crop_rect_uses_action_ocr_crop_rect() -> None:
@@ -235,27 +246,54 @@ def test_write_secondary_ocr_digits_image_writes_cropped_secondary_overlay(
             "secondaryOcrCropRect": {"left": 2, "top": 3, "width": 31, "height": 8},
         }
     ]
-    frame_results = [
-        FrameOcrResult(frame_index=0, ms=500),
-        FrameOcrResult(frame_index=1, ms=1200),
-        FrameOcrResult(frame_index=2, ms=1800),
-    ]
     frames = [np.zeros((12, 40, 3), dtype=np.uint8) for _ in range(3)]
     for digit in range(10):
         left = 3 + (digit * 3)
         frames[2][5:9, left : left + 2] = 255
 
+    class FakeCapture:
+        def __init__(self, source_frames):
+            self._frames = source_frames
+            self._position = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def get(self, prop):
+            if prop == 5:  # cv2.CAP_PROP_FPS
+                return 1.0
+            if prop == 7:  # cv2.CAP_PROP_FRAME_COUNT
+                return float(len(self._frames))
+            return 0.0
+
+        def set(self, prop, value):
+            if prop == 1:  # cv2.CAP_PROP_POS_FRAMES
+                self._position = int(value)
+                return True
+            return False
+
+        def read(self):
+            if self._position < 0 or self._position >= len(self._frames):
+                return False, None
+            return True, self._frames[self._position]
+
+        def release(self):
+            return None
+
     def fake_imwrite(path: str, frame) -> bool:
         Path(path).write_text(f"{frame.shape[1]}x{frame.shape[0]}", encoding="utf-8")
         return True
 
+    monkeypatch.setattr(
+        "scriber_2_screenshots.generate_screenshots.cv2.VideoCapture",
+        lambda _path: FakeCapture(frames),
+    )
     monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
 
     output_path = tmp_path / "ocr_digits" / "ocr_digits.png"
     write_secondary_ocr_digits_image(
         actions=actions,
-        frame_results=frame_results,
-        frames=frames,
+        video_path=tmp_path / "video.webm",
         output_path=output_path,
         overlay_settle_delay_ms=500,
     )
@@ -292,19 +330,28 @@ def test_process_session_creates_analytics_files(tmp_path: Path, monkeypatch) ->
     fake_frames = [np.zeros((12, 24, 3), dtype=np.uint8)]
 
     def fake_run_template_matching_on_video(video_path, crop_rect, style, min_score):
-        return fake_results, fake_frames
+        return fake_results, fake_frames, 1.0
 
     def fake_imwrite(path: str, frame) -> bool:
         Path(path).write_text(str(frame), encoding="utf-8")
         return True
+
+    def fake_write_secondary(actions, video_path, output_path, overlay_settle_delay_ms):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("secondary", encoding="utf-8")
+        (output_path.parent / "ocr_digits_otsu.png").write_text("otsu", encoding="utf-8")
+        padded_dir = output_path.parent.with_name("ocr_digits_2")
+        padded_dir.mkdir(parents=True, exist_ok=True)
+        for digit in range(10):
+            (padded_dir / f"{digit}.png").write_text("digit", encoding="utf-8")
 
     monkeypatch.setattr(
         "scriber_2_screenshots.generate_screenshots.run_template_matching_on_video",
         fake_run_template_matching_on_video,
     )
     monkeypatch.setattr(
-        "scriber_2_screenshots.generate_screenshots.ensure_tesseract_runtime_ready",
-        lambda: "test-version",
+        "scriber_2_screenshots.generate_screenshots.write_secondary_ocr_digits_image",
+        fake_write_secondary,
     )
     monkeypatch.setattr("scriber_2_screenshots.generate_screenshots.cv2.imwrite", fake_imwrite)
 

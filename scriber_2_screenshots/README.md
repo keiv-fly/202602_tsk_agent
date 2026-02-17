@@ -7,17 +7,17 @@ Generate action-aligned screenshots and analytics from Scriber session recording
 The entrypoint `generate_screenshots.py`:
 
 - reads `actions.json` and `video.webm` from each session's `01_scriber` folder
-- uses Tesseract OCR (digits-only) to read the overlay number on each frame
+- extracts digit templates from the secondary overlay (`ocr_digits_2/0.png` ... `9.png`)
+- uses template matching to read the top-left overlay number on each frame
 - uses style values from `scriber/src/tooling/recorder.ts` to determine expected digit length
 - captures three screenshots per action (`before`, `at`, `after`)
 - writes analytics artifacts to `02_scriber_analytics`
-- writes a per-frame CSV table with OCR-only values, frame id, and match probability (`ocr_ms_per_frame_table.csv`)
-- writes `check_number_ocr/` with one cropped screenshot per second and a screenshot table including the matching frame id and OCR value
+- writes a per-frame CSV table with OCR value, frame id, and per-digit matching metrics (`ocr_ms_per_frame_table.csv`)
+- writes `check_number_ocr/` with one cropped screenshot per second based on video FPS (`id ~= second * fps`) and a screenshot table including the selected frame id and OCR value
 
 ## Prerequisites
 
 - Python 3.10+
-- Tesseract OCR binary installed and available on your `PATH`
 
 ## Install Python dependencies
 
@@ -26,7 +26,7 @@ From the repository root:
 ```bash
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install opencv-python pytesseract tqdm pytest
+pip install opencv-python tqdm pytest
 ```
 
 ## Run
