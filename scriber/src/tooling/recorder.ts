@@ -73,6 +73,8 @@ interface SnapshotCapturePayload {
   textRect: OverlayCropRect | null;
   secondaryOverlayRect: OverlayCropRect | null;
   secondaryTextRect: OverlayCropRect | null;
+  encodedOverlayRect: OverlayCropRect | null;
+  encodedTextRect: OverlayCropRect | null;
 }
 
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
@@ -611,6 +613,9 @@ export class ScriberRecorder {
         action.secondaryOverlayRect = snapshotCapture.secondaryOverlayRect;
         action.secondaryOcrCropRect =
           snapshotCapture.secondaryTextRect ?? snapshotCapture.secondaryOverlayRect;
+        action.encodedOverlayRect = snapshotCapture.encodedOverlayRect;
+        action.encodedOcrCropRect =
+          snapshotCapture.encodedTextRect ?? snapshotCapture.encodedOverlayRect;
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -753,7 +758,7 @@ export class ScriberRecorder {
 
   private async captureSnapshotPayload(page: Page): Promise<SnapshotCapturePayload> {
     return await page.evaluate(
-      ({ primaryOverlayId, secondaryOverlayId }) => {
+      ({ primaryOverlayId, secondaryOverlayId, encodedOverlayId }) => {
         const clone = document.documentElement.cloneNode(true) as HTMLElement;
         const inputs = clone.querySelectorAll("input");
         inputs.forEach((input) => {
@@ -773,10 +778,13 @@ export class ScriberRecorder {
         let textRect: OverlayCropRect | null = null;
         let secondaryOverlayRect: OverlayCropRect | null = null;
         let secondaryTextRect: OverlayCropRect | null = null;
+        let encodedOverlayRect: OverlayCropRect | null = null;
+        let encodedTextRect: OverlayCropRect | null = null;
 
         const overlays = [
           { overlay: document.getElementById(primaryOverlayId), isSecondary: false },
-          { overlay: document.getElementById(secondaryOverlayId), isSecondary: true }
+          { overlay: document.getElementById(secondaryOverlayId), isSecondary: true },
+          { overlay: document.getElementById(encodedOverlayId), isEncoded: true }
         ];
 
         for (const entry of overlays) {
@@ -848,7 +856,10 @@ export class ScriberRecorder {
             height: Math.max(1, textClampedBottom - textClampedTop)
           };
 
-          if (entry.isSecondary) {
+          if (entry.isEncoded) {
+            encodedOverlayRect = measuredOverlayRect;
+            encodedTextRect = measuredTextRect;
+          } else if (entry.isSecondary) {
             secondaryOverlayRect = measuredOverlayRect;
             secondaryTextRect = measuredTextRect;
           } else {
@@ -862,12 +873,15 @@ export class ScriberRecorder {
           overlayRect,
           textRect,
           secondaryOverlayRect,
-          secondaryTextRect
+          secondaryTextRect,
+          encodedOverlayRect,
+          encodedTextRect
         };
       },
       {
         primaryOverlayId: FRAME_OVERLAY_ID,
-        secondaryOverlayId: SECONDARY_FRAME_OVERLAY_ID
+        secondaryOverlayId: SECONDARY_FRAME_OVERLAY_ID,
+        encodedOverlayId: ENCODED_FRAME_OVERLAY_ID
       }
     );
   }

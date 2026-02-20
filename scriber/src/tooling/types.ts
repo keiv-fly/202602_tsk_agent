@@ -75,6 +75,8 @@ export interface ActionRecord extends SelectorInfo {
   ocrCropRect?: OverlayCropRect | null;
   secondaryOverlayRect?: OverlayCropRect | null;
   secondaryOcrCropRect?: OverlayCropRect | null;
+  encodedOverlayRect?: OverlayCropRect | null;
+  encodedOcrCropRect?: OverlayCropRect | null;
   target?: TargetMetadata;
   details?: Record<string, unknown>;
 }

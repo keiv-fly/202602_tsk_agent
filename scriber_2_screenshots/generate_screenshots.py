@@ -18,6 +18,10 @@ DEFAULT_RECORDER_TS_PATH = (
     Path(__file__).resolve().parents[1] / "scriber" / "src" / "tooling" / "recorder.ts"
 )
 PER_DIGIT_METRIC_COLUMNS = tuple(f"digit_{idx}_match" for idx in range(1, DEFAULT_DIGIT_COUNT + 1))
+ENCODED_GRID_SIZE = 5
+ENCODED_DATA_BITS = 20
+ENCODED_CRC_BITS = 5
+ENCODED_TOTAL_BITS = ENCODED_DATA_BITS + ENCODED_CRC_BITS
 
 
 @dataclass(frozen=True)
@@ -248,13 +252,75 @@ def match_overlay_digits(
     return FrameTemplateMatch(value=value, score=aggregate_score, digit_metrics=padded_metrics)
 
 
+def _crc32(bytes_seq: Sequence[int]) -> int:
+    crc = 0xFFFFFFFF
+    for byte in bytes_seq:
+        crc ^= int(byte) & 0xFF
+        for _ in range(8):
+            mask = -(crc & 1)
+            crc = (crc >> 1) ^ (0xEDB88320 & mask)
+    return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF
+
+
+def decode_encoded_overlay_ms(roi: np.ndarray) -> tuple[int | None, tuple[float | None, ...]]:
+    if roi is None or roi.size == 0:
+        return None, ()
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
+    height, width = gray.shape[:2]
+    if height < ENCODED_GRID_SIZE or width < ENCODED_GRID_SIZE:
+        return None, ()
+
+    bit_values: list[int] = []
+    metrics: list[float] = []
+    for row in range(ENCODED_GRID_SIZE):
+        start_y = int(round(row * height / ENCODED_GRID_SIZE))
+        end_y = int(round((row + 1) * height / ENCODED_GRID_SIZE))
+        for col in range(ENCODED_GRID_SIZE):
+            start_x = int(round(col * width / ENCODED_GRID_SIZE))
+            end_x = int(round((col + 1) * width / ENCODED_GRID_SIZE))
+            cell = gray[start_y:end_y, start_x:end_x]
+            if cell.size == 0:
+                metrics.append(0.0)
+                bit_values.append(0)
+                continue
+            darkness = 1.0 - (float(np.mean(cell)) / 255.0)
+            normalized_darkness = _normalize_similarity_metric(darkness)
+            metrics.append(normalized_darkness)
+            bit_values.append(1 if normalized_darkness >= 0.5 else 0)
+
+    if len(bit_values) < ENCODED_TOTAL_BITS:
+        return None, tuple(metrics)
+
+    payload = 0
+    for bit in bit_values[:ENCODED_TOTAL_BITS]:
+        payload = (payload << 1) | bit
+
+    received_crc = payload & ((1 << ENCODED_CRC_BITS) - 1)
+    elapsed_ms = payload >> ENCODED_CRC_BITS
+    if elapsed_ms < 0 or elapsed_ms > ((1 << ENCODED_DATA_BITS) - 1):
+        return None, tuple(metrics)
+
+    data_bytes = [
+        (elapsed_ms >> 16) & 0xFF,
+        (elapsed_ms >> 8) & 0xFF,
+        elapsed_ms & 0xFF,
+    ]
+    expected_crc = _crc32(data_bytes) & ((1 << ENCODED_CRC_BITS) - 1)
+    if received_crc != expected_crc:
+        return None, tuple(metrics)
+
+    return elapsed_ms, tuple(metrics)
+
+
 def run_template_matching_on_video(
     video_path: Path,
     crop_rect: tuple[int, int, int, int] | None,
     style: OverlayTemplateStyle,
     min_score: float = DEFAULT_TEMPLATE_SCORE_THRESHOLD,
 ) -> tuple[list[FrameOcrResult], list, float]:
-    del style  # Overlay digit count is fixed to six digits.
+    del style
+    del min_score
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Unable to open video: {video_path}")
@@ -269,32 +335,19 @@ def run_template_matching_on_video(
 
     frame_results: list[FrameOcrResult] = []
     frames: list = []
-    templates_dir = video_path.parent.parent / "02_scriber_analytics" / "ocr_digits_2"
-    templates = load_digit_templates(templates_dir)
-    if not templates:
-        raise RuntimeError(
-            f"No digit templates found in {templates_dir}. "
-            "Generate ocr_digits_2 templates before matching overlay digits."
-        )
 
-    for frame_index in tqdm(range(total_frames), desc=f"Template OCR {video_path.name}"):
+    for frame_index in tqdm(range(total_frames), desc=f"Bit decode {video_path.name}"):
         ok, frame = cap.read()
         if not ok:
             break
 
         roi = _crop_frame(frame, crop_rect)
-        match = match_overlay_digits(
-            roi,
-            templates=templates,
-            digit_count=DEFAULT_DIGIT_COUNT,
-            min_score=min_score,
-        )
-        ms = match.value
+        ms, metrics = decode_encoded_overlay_ms(roi)
         frame_results.append(
             FrameOcrResult(
                 frame_index=frame_index,
                 ms=ms,
-                digit_match_metrics=match.digit_metrics,
+                digit_match_metrics=metrics,
             )
         )
         frames.append(frame)
@@ -457,6 +510,10 @@ def _normalize_crop_rect(rect: dict | None) -> tuple[int, int, int, int] | None:
 
 
 def determine_crop_rect(actions: Iterable[dict]) -> tuple[int, int, int, int] | None:
+    for action in actions:
+        rect = _normalize_crop_rect(action.get("encodedOcrCropRect"))
+        if rect:
+            return rect
     for action in actions:
         rect = _normalize_crop_rect(action.get("ocrCropRect"))
         if rect:
