@@ -944,14 +944,11 @@ const createInitScript = (sessionStartMs: number) => `
   const SCRIBER_SESSION_START_MS = ${sessionStartMs};
   const SCRIBER_OVERLAY_MAX_MS = 999999;
   const SCRIBER_NS_PER_MS = 1_000_000;
-  const SCRIBER_SECONDARY_OVERLAY_TEXT = '0123456789';
-  const SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS = 6000;
   const SCRIBER_ENCODED_GRID_SIZE = 5;
   const SCRIBER_ENCODED_CELL_SIZE_PX = 4;
   const SCRIBER_ENCODED_DATA_BITS = 20;
   const SCRIBER_ENCODED_CRC_BITS = 5;
   const SCRIBER_PRIMARY_OVERLAY_ID = ${JSON.stringify(FRAME_OVERLAY_ID)};
-  const SCRIBER_SECONDARY_OVERLAY_ID = ${JSON.stringify(SECONDARY_FRAME_OVERLAY_ID)};
   const SCRIBER_ENCODED_OVERLAY_ID = ${JSON.stringify(ENCODED_FRAME_OVERLAY_ID)};
 
   const getEpochMs = () => performance.timeOrigin + performance.now();
@@ -1075,7 +1072,6 @@ const createInitScript = (sessionStartMs: number) => `
   };
 
   let frameOverlay = null;
-  let secondaryFrameOverlay = null;
   let encodedFrameOverlay = null;
   const ensureFrameOverlay = () => {
     if (frameOverlay instanceof HTMLElement && frameOverlay.isConnected) {
@@ -1121,54 +1117,6 @@ const createInitScript = (sessionStartMs: number) => `
     });
     root.appendChild(frameOverlay);
     return frameOverlay;
-  };
-
-  const ensureSecondaryFrameOverlay = () => {
-    if (secondaryFrameOverlay instanceof HTMLElement && secondaryFrameOverlay.isConnected) {
-      return secondaryFrameOverlay;
-    }
-    const existing = document.getElementById(SCRIBER_SECONDARY_OVERLAY_ID);
-    if (existing instanceof HTMLElement) {
-      secondaryFrameOverlay = existing;
-      return secondaryFrameOverlay;
-    }
-    const root = document.documentElement || document.body;
-    if (!root) {
-      return null;
-    }
-    secondaryFrameOverlay = document.createElement('div');
-    secondaryFrameOverlay.id = SCRIBER_SECONDARY_OVERLAY_ID;
-    secondaryFrameOverlay.className = 'ocr-digits-secondary';
-    secondaryFrameOverlay.setAttribute('aria-hidden', 'true');
-    secondaryFrameOverlay.textContent = SCRIBER_SECONDARY_OVERLAY_TEXT;
-    Object.assign(secondaryFrameOverlay.style, {
-      display: 'inline-block',
-      position: 'fixed',
-      top: '40px',
-      left: '6px',
-      width: 'auto',
-      minWidth: '10ch',
-      padding: '3px 5px',
-      boxSizing: 'content-box',
-      whiteSpace: 'pre',
-      textAlign: 'right',
-      backgroundColor: '#000000',
-      color: '#FFFFFF',
-      fontFamily: '"Roboto Mono", monospace',
-      fontWeight: '700',
-      fontSize: '22px',
-      lineHeight: '1',
-      letterSpacing: '0.06em',
-      fontVariantNumeric: 'tabular-nums lining-nums',
-      WebkitTextStroke: '0.5px #000000',
-      textShadow: 'none',
-      pointerEvents: 'none',
-      userSelect: 'none',
-      zIndex: '2147483647',
-      overflow: 'visible',
-    });
-    root.appendChild(secondaryFrameOverlay);
-    return secondaryFrameOverlay;
   };
 
   const ensureEncodedFrameOverlay = () => {
@@ -1281,18 +1229,13 @@ const createInitScript = (sessionStartMs: number) => `
 
   const updateFrameOverlay = () => {
     const primaryOverlay = ensureFrameOverlay();
-    const secondaryOverlay = ensureSecondaryFrameOverlay();
     const encodedOverlay = ensureEncodedFrameOverlay();
-    if (!primaryOverlay && !secondaryOverlay && !encodedOverlay) {
+    if (!primaryOverlay && !encodedOverlay) {
       return;
     }
     const elapsedMs = getOverlayMs(getEpochMs());
     if (primaryOverlay) {
       primaryOverlay.textContent = String(elapsedMs).padStart(6, '0');
-    }
-    if (secondaryOverlay) {
-      secondaryOverlay.style.display =
-        elapsedMs >= SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS ? 'none' : 'inline-block';
     }
     if (encodedOverlay) {
       renderEncodedOverlay(encodedOverlay, elapsedMs);
