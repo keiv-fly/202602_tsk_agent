@@ -78,6 +78,7 @@ interface SnapshotCapturePayload {
 const nowEpochMs = () => nodePerformance.timeOrigin + nodePerformance.now();
 const FRAME_OVERLAY_ID = "__scriberFrameOverlay";
 const SECONDARY_FRAME_OVERLAY_ID = "__scriberSecondFrameOverlay";
+const ENCODED_FRAME_OVERLAY_ID = "__scriberEncodedFrameOverlay";
 const compareActionsForOutput = (left: ActionRecord, right: ActionRecord) => {
   const byStep = left.stepNumber - right.stepNumber;
   if (byStep !== 0) {
@@ -931,8 +932,13 @@ const createInitScript = (sessionStartMs: number) => `
   const SCRIBER_NS_PER_MS = 1_000_000;
   const SCRIBER_SECONDARY_OVERLAY_TEXT = '0123456789';
   const SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS = 6000;
+  const SCRIBER_ENCODED_GRID_SIZE = 5;
+  const SCRIBER_ENCODED_CELL_SIZE_PX = 4;
+  const SCRIBER_ENCODED_DATA_BITS = 20;
+  const SCRIBER_ENCODED_CRC_BITS = 5;
   const SCRIBER_PRIMARY_OVERLAY_ID = ${JSON.stringify(FRAME_OVERLAY_ID)};
   const SCRIBER_SECONDARY_OVERLAY_ID = ${JSON.stringify(SECONDARY_FRAME_OVERLAY_ID)};
+  const SCRIBER_ENCODED_OVERLAY_ID = ${JSON.stringify(ENCODED_FRAME_OVERLAY_ID)};
 
   const getEpochMs = () => performance.timeOrigin + performance.now();
 
@@ -1056,6 +1062,7 @@ const createInitScript = (sessionStartMs: number) => `
 
   let frameOverlay = null;
   let secondaryFrameOverlay = null;
+  let encodedFrameOverlay = null;
   const ensureFrameOverlay = () => {
     if (frameOverlay instanceof HTMLElement && frameOverlay.isConnected) {
       return frameOverlay;
@@ -1150,10 +1157,119 @@ const createInitScript = (sessionStartMs: number) => `
     return secondaryFrameOverlay;
   };
 
+  const ensureEncodedFrameOverlay = () => {
+    if (encodedFrameOverlay instanceof HTMLElement && encodedFrameOverlay.isConnected) {
+      return encodedFrameOverlay;
+    }
+    const existing = document.getElementById(SCRIBER_ENCODED_OVERLAY_ID);
+    if (existing instanceof HTMLElement) {
+      encodedFrameOverlay = existing;
+      return encodedFrameOverlay;
+    }
+    const root = document.documentElement || document.body;
+    if (!root) {
+      return null;
+    }
+    encodedFrameOverlay = document.createElement('div');
+    encodedFrameOverlay.id = SCRIBER_ENCODED_OVERLAY_ID;
+    encodedFrameOverlay.className = 'ocr-digits-encoded';
+    encodedFrameOverlay.setAttribute('aria-hidden', 'true');
+    Object.assign(encodedFrameOverlay.style, {
+      display: 'grid',
+      position: 'fixed',
+      top: '74px',
+      left: '6px',
+      width: String(SCRIBER_ENCODED_GRID_SIZE * SCRIBER_ENCODED_CELL_SIZE_PX) + 'px',
+      height: String(SCRIBER_ENCODED_GRID_SIZE * SCRIBER_ENCODED_CELL_SIZE_PX) + 'px',
+      gridTemplateColumns:
+        'repeat(' +
+        String(SCRIBER_ENCODED_GRID_SIZE) +
+        ', ' +
+        String(SCRIBER_ENCODED_CELL_SIZE_PX) +
+        'px)',
+      gridTemplateRows:
+        'repeat(' +
+        String(SCRIBER_ENCODED_GRID_SIZE) +
+        ', ' +
+        String(SCRIBER_ENCODED_CELL_SIZE_PX) +
+        'px)',
+      gap: '0px',
+      padding: '0px',
+      boxSizing: 'content-box',
+      backgroundColor: '#FFFFFF',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: '2147483647',
+      overflow: 'hidden'
+    });
+    const totalCells = SCRIBER_ENCODED_GRID_SIZE * SCRIBER_ENCODED_GRID_SIZE;
+    for (let index = 0; index < totalCells; index += 1) {
+      const cell = document.createElement('div');
+      cell.setAttribute('data-bit-index', String(index));
+      Object.assign(cell.style, {
+        width: String(SCRIBER_ENCODED_CELL_SIZE_PX) + 'px',
+        height: String(SCRIBER_ENCODED_CELL_SIZE_PX) + 'px',
+        backgroundColor: '#FFFFFF'
+      });
+      encodedFrameOverlay.appendChild(cell);
+    }
+    root.appendChild(encodedFrameOverlay);
+    return encodedFrameOverlay;
+  };
+
+  const crc32 = (bytes) => {
+    let crc = 0xFFFFFFFF;
+    for (let byteIndex = 0; byteIndex < bytes.length; byteIndex += 1) {
+      crc ^= bytes[byteIndex];
+      for (let bit = 0; bit < 8; bit += 1) {
+        const mask = -(crc & 1);
+        crc = (crc >>> 1) ^ (0xEDB88320 & mask);
+      }
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  };
+
+  const buildEncodedOverlayBits = (elapsedMs) => {
+    const clampedData = Math.min(Math.max(0, elapsedMs), (1 << SCRIBER_ENCODED_DATA_BITS) - 1);
+    const dataBytes = [
+      (clampedData >>> 16) & 0xFF,
+      (clampedData >>> 8) & 0xFF,
+      clampedData & 0xFF
+    ];
+    const crc = crc32(dataBytes) & ((1 << SCRIBER_ENCODED_CRC_BITS) - 1);
+    const payload =
+      (BigInt(clampedData) << BigInt(SCRIBER_ENCODED_CRC_BITS)) |
+      BigInt(crc);
+    const totalBits = SCRIBER_ENCODED_DATA_BITS + SCRIBER_ENCODED_CRC_BITS;
+    const bits = [];
+    for (let bitIndex = totalBits - 1; bitIndex >= 0; bitIndex -= 1) {
+      bits.push(Number((payload >> BigInt(bitIndex)) & 1n));
+    }
+    return bits;
+  };
+
+  const renderEncodedOverlay = (overlay, elapsedMs) => {
+    if (!(overlay instanceof HTMLElement)) {
+      return;
+    }
+    const bits = buildEncodedOverlayBits(elapsedMs);
+    const cells = overlay.children;
+    const cellCount = Math.min(cells.length, bits.length);
+    for (let index = 0; index < cellCount; index += 1) {
+      const cell = cells[index];
+      if (!(cell instanceof HTMLElement)) {
+        continue;
+      }
+      const bit = bits[index];
+      cell.style.backgroundColor = bit === 1 ? '#000000' : '#FFFFFF';
+    }
+  };
+
   const updateFrameOverlay = () => {
     const primaryOverlay = ensureFrameOverlay();
     const secondaryOverlay = ensureSecondaryFrameOverlay();
-    if (!primaryOverlay && !secondaryOverlay) {
+    const encodedOverlay = ensureEncodedFrameOverlay();
+    if (!primaryOverlay && !secondaryOverlay && !encodedOverlay) {
       return;
     }
     const elapsedMs = getOverlayMs(getEpochMs());
@@ -1163,6 +1279,9 @@ const createInitScript = (sessionStartMs: number) => `
     if (secondaryOverlay) {
       secondaryOverlay.style.display =
         elapsedMs >= SCRIBER_SECONDARY_OVERLAY_HIDE_AFTER_MS ? 'none' : 'inline-block';
+    }
+    if (encodedOverlay) {
+      renderEncodedOverlay(encodedOverlay, elapsedMs);
     }
   };
 

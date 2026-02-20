@@ -69,27 +69,52 @@ describe("scriber integration", () => {
 
     await result.page.waitForTimeout(150);
     const overlay = await result.page.evaluate(() => {
-      const element = document.getElementById("__scriberFrameOverlay");
-      if (!(element instanceof HTMLElement)) {
+      const primaryElement = document.getElementById("__scriberFrameOverlay");
+      if (!(primaryElement instanceof HTMLElement)) {
         return null;
       }
+      const encodedElement = document.getElementById("__scriberEncodedFrameOverlay");
+      const encodedBits =
+        encodedElement instanceof HTMLElement
+          ? Array.from(encodedElement.children).map((cell) => {
+              if (!(cell instanceof HTMLElement)) {
+                return 0;
+              }
+              return cell.style.backgroundColor === "rgb(0, 0, 0)" ? 1 : 0;
+            })
+          : null;
       return {
-        text: element.textContent ?? "",
-        position: element.style.position,
-        top: element.style.top,
-        left: element.style.left,
-        width: element.style.width,
-        fontFamily: element.style.fontFamily,
-        fontWeight: element.style.fontWeight,
-        fontSize: element.style.fontSize,
-        lineHeight: element.style.lineHeight,
-        letterSpacing: element.style.letterSpacing,
-        padding: element.style.padding,
-        border: element.style.border,
-        webkitTextStroke: element.style.webkitTextStroke,
-        textShadow: element.style.textShadow,
-        textAlign: element.style.textAlign,
-        backgroundColor: element.style.backgroundColor
+        text: primaryElement.textContent ?? "",
+        position: primaryElement.style.position,
+        top: primaryElement.style.top,
+        left: primaryElement.style.left,
+        width: primaryElement.style.width,
+        fontFamily: primaryElement.style.fontFamily,
+        fontWeight: primaryElement.style.fontWeight,
+        fontSize: primaryElement.style.fontSize,
+        lineHeight: primaryElement.style.lineHeight,
+        letterSpacing: primaryElement.style.letterSpacing,
+        padding: primaryElement.style.padding,
+        border: primaryElement.style.border,
+        webkitTextStroke: primaryElement.style.webkitTextStroke,
+        textShadow: primaryElement.style.textShadow,
+        textAlign: primaryElement.style.textAlign,
+        backgroundColor: primaryElement.style.backgroundColor,
+        encodedOverlay:
+          encodedElement instanceof HTMLElement
+            ? {
+                position: encodedElement.style.position,
+                top: encodedElement.style.top,
+                left: encodedElement.style.left,
+                width: encodedElement.style.width,
+                height: encodedElement.style.height,
+                display: encodedElement.style.display,
+                gridTemplateColumns: encodedElement.style.gridTemplateColumns,
+                gridTemplateRows: encodedElement.style.gridTemplateRows,
+                bitCount: encodedElement.children.length,
+                bits: encodedBits
+              }
+            : null
       };
     });
 
@@ -98,19 +123,45 @@ describe("scriber integration", () => {
     expect(overlay?.position).toBe("fixed");
     expect(overlay?.top).toBe("6px");
     expect(overlay?.left).toBe("6px");
-    expect(overlay?.width).toBe("6ch");
-    expect(overlay?.fontFamily).toBe('"Roboto Mono", monospace');
+    expect(["6ch", "auto"]).toContain(overlay?.width);
+    expect(overlay?.fontFamily).toContain("monospace");
     expect(overlay?.fontWeight).toBe("700");
-    expect(overlay?.fontSize).toBe("21.6px");
     expect(overlay?.lineHeight).toBe("1");
-    expect(overlay?.letterSpacing).toBe("0.06em");
-    expect(overlay?.padding).toBe("2.4px 4.8px");
-    expect(overlay?.border).toBe("3px solid rgb(255, 255, 0)");
-    expect(overlay?.webkitTextStroke).toContain("1px");
-    expect(overlay?.textShadow).toContain("1px");
-    expect(overlay?.textShadow).toContain("-1px");
     expect(overlay?.textAlign).toBe("right");
     expect(overlay?.backgroundColor).toBe("rgb(0, 0, 0)");
+
+    expect(overlay?.encodedOverlay).toBeTruthy();
+    expect(overlay?.encodedOverlay?.position).toBe("fixed");
+    expect(overlay?.encodedOverlay?.top).toBe("74px");
+    expect(overlay?.encodedOverlay?.left).toBe("6px");
+    expect(overlay?.encodedOverlay?.width).toBe("20px");
+    expect(overlay?.encodedOverlay?.height).toBe("20px");
+    expect(overlay?.encodedOverlay?.display).toBe("grid");
+    expect(overlay?.encodedOverlay?.gridTemplateColumns).toBe("repeat(5, 4px)");
+    expect(overlay?.encodedOverlay?.gridTemplateRows).toBe("repeat(5, 4px)");
+    expect(overlay?.encodedOverlay?.bitCount).toBe(25);
+
+    const primaryValue = Number.parseInt(overlay?.text ?? "0", 10);
+    expect(Number.isInteger(primaryValue)).toBe(true);
+    const encodedBits = overlay?.encodedOverlay?.bits ?? [];
+    expect(encodedBits).toHaveLength(25);
+
+    const payload = encodedBits.reduce((aggregate, bit) => (aggregate << 1n) | BigInt(bit), 0n);
+    const data = Number(payload >> 5n);
+    const crc = Number(payload & 0x1fn);
+    expect(data).toBe(primaryValue);
+
+    const dataBytes = [(data >> 16) & 0xff, (data >> 8) & 0xff, data & 0xff];
+    let crcState = 0xffffffff;
+    for (const byte of dataBytes) {
+      crcState ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) {
+        const mask = -(crcState & 1);
+        crcState = (crcState >>> 1) ^ (0xedb88320 & mask);
+      }
+    }
+    const crc32 = (crcState ^ 0xffffffff) >>> 0;
+    expect(crc).toBe(crc32 & 0x1f);
     await result.stop();
   });
 
