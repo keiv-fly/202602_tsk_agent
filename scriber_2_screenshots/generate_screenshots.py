@@ -454,7 +454,7 @@ def capture_action_screenshots(
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     updated_actions: list[dict] = []
 
-    for action in actions:
+    for action_idx, action in enumerate(actions):
         target_ms = int(round((action.get("timeSinceVideoStartNs") or 0) / 1_000_000))
 
         before_target = max(target_ms - 300, 0)
@@ -465,10 +465,16 @@ def capture_action_screenshots(
         at_idx = find_frame_index(frame_results, at_target, mode="at_or_before")
         after_idx = find_frame_index(frame_results, after_target, mode="at_or_after")
 
-        action_id = action.get("actionId") or f"step_{action.get('stepNumber', 'unknown')}"
-        before_path = screenshots_dir / f"{action_id}_before.png"
-        at_path = screenshots_dir / f"{action_id}_at.png"
-        after_path = screenshots_dir / f"{action_id}_after.png"
+        action_number_raw = action.get("stepNumber")
+        try:
+            action_number = int(action_number_raw)
+        except (TypeError, ValueError):
+            action_number = action_idx + 1
+
+        action_prefix = f"{max(0, action_number):04d}"
+        before_path = screenshots_dir / f"{action_prefix}_before.png"
+        at_path = screenshots_dir / f"{action_prefix}_at.png"
+        after_path = screenshots_dir / f"{action_prefix}_after.png"
 
         cv2.imwrite(str(before_path), frames[before_idx])
         cv2.imwrite(str(at_path), frames[at_idx])
