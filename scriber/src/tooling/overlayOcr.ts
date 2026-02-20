@@ -151,7 +151,12 @@ export const createOverlayOcrWorker = async (
 export const buildOverlayCutPath = (imagePath: string) => {
   const parsed = parse(imagePath);
   const ext = parsed.ext || ".png";
-  return resolve(parsed.dir, `${parsed.name}_ocr_cut${ext}`);
+  const fileName = `${parsed.name}_ocr_cut${ext}`;
+  if (!parsed.dir) {
+    return fileName;
+  }
+  const separator = parsed.dir.endsWith("/") || parsed.dir.endsWith("\\") ? "" : "/";
+  return `${parsed.dir}${separator}${fileName}`;
 };
 
 const cropOverlayForOcr = async (imagePath: string, hints?: OverlayOcrCropHints) => {
