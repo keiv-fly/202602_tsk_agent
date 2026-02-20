@@ -6,6 +6,7 @@ from scriber_2_screenshots.generate_screenshots import (
     FrameOcrResult,
     OverlayTemplateStyle,
     capture_action_screenshots,
+    decode_encoded_overlay_ms,
     determine_secondary_ocr_capture,
     determine_crop_rect,
     find_frame_index,
@@ -73,6 +74,44 @@ def test_match_overlay_digits_uses_template_similarity() -> None:
     assert len(result.digit_metrics) == 6
     assert all(metric is not None and metric > 0.99 for metric in result.digit_metrics)
 
+
+
+
+def test_decode_encoded_overlay_ms_reads_valid_payload() -> None:
+    target_ms = 54321
+
+    def crc32(bytes_seq: list[int]) -> int:
+        crc = 0xFFFFFFFF
+        for byte in bytes_seq:
+            crc ^= byte & 0xFF
+            for _ in range(8):
+                mask = -(crc & 1)
+                crc = (crc >> 1) ^ (0xEDB88320 & mask)
+        return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF
+
+    crc = crc32([(target_ms >> 16) & 0xFF, (target_ms >> 8) & 0xFF, target_ms & 0xFF]) & 0x1F
+    payload = (target_ms << 5) | crc
+    bits = [((payload >> bit) & 1) for bit in range(24, -1, -1)]
+
+    roi = np.full((50, 50), 255, dtype=np.uint8)
+    bit_idx = 0
+    for row in range(5):
+        for col in range(5):
+            value = 0 if bits[bit_idx] == 1 else 255
+            roi[row * 10 : (row + 1) * 10, col * 10 : (col + 1) * 10] = value
+            bit_idx += 1
+
+    decoded_ms, metrics = decode_encoded_overlay_ms(roi)
+
+    assert decoded_ms == target_ms
+    assert len(metrics) == 25
+
+
+def test_decode_encoded_overlay_ms_rejects_crc_mismatch() -> None:
+    roi = np.full((50, 50), 255, dtype=np.uint8)
+    roi[0:10, 0:10] = 0
+    decoded_ms, _ = decode_encoded_overlay_ms(roi)
+    assert decoded_ms is None
 
 def test_match_overlay_digits_respects_min_similarity_threshold() -> None:
     roi = np.zeros((12, 60), dtype=np.uint8)
@@ -217,9 +256,12 @@ def test_write_number_check_outputs_uses_frame_rate_and_cleans_stale_images(
     assert len(table_lines) == 4  # header + seconds 0,1,2 at 1fps with 3 frames
 
 
-def test_determine_crop_rect_uses_action_ocr_crop_rect() -> None:
-    actions = [{"ocrCropRect": {"left": 1, "top": 2, "width": 3, "height": 4}}]
-    assert determine_crop_rect(actions) == (1, 2, 3, 4)
+def test_determine_crop_rect_prefers_encoded_crop_rect() -> None:
+    actions = [
+        {"ocrCropRect": {"left": 1, "top": 2, "width": 3, "height": 4}},
+        {"encodedOcrCropRect": {"left": 10, "top": 20, "width": 30, "height": 40}},
+    ]
+    assert determine_crop_rect(actions) == (10, 20, 30, 40)
 
 
 def test_determine_secondary_ocr_capture_uses_first_overlay_event_plus_delay() -> None:
