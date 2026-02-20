@@ -147,9 +147,13 @@ export const startTool = async (
 
   const viewport = normalizeViewport(options.viewport);
   const headless = options.headless ?? true;
+  const launchArgs = ["--force-device-scale-factor=1"];
+  if (!headless) {
+    launchArgs.push(`--window-size=${viewport.width},${viewport.height}`);
+  }
   const browser = await chromium.launch({
     headless,
-    args: headless ? [] : [`--window-size=${viewport.width},${viewport.height}`]
+    args: launchArgs
   });
 
   const videoPath = resolve(outputDir, RECORDED_VIDEO_FILE);
