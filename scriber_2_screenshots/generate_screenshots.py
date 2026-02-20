@@ -367,13 +367,9 @@ def write_frame_ms_table_file(results: Sequence[FrameOcrResult], output_path: Pa
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["id", "ocr_ms", *PER_DIGIT_METRIC_COLUMNS])
+        writer.writerow(["id", "ocr_ms"])
         for result in results:
-            metrics = _pad_digit_metrics(result.digit_match_metrics, DEFAULT_DIGIT_COUNT)
-            metric_cells = [f"{metric:.6f}" if metric is not None else "" for metric in metrics]
-            writer.writerow(
-                [result.frame_index, result.ms if result.ms is not None else "None", *metric_cells]
-            )
+            writer.writerow([result.frame_index, result.ms if result.ms is not None else "None"])
 
 
 def write_number_check_outputs(

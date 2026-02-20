@@ -169,7 +169,7 @@ def test_capture_action_screenshots_writes_three_images(tmp_path: Path, monkeypa
     assert updated[0]["screenshotTimesMs"] == {"before": 200, "at": 500, "after": 1300}
 
 
-def test_write_frame_ms_table_file_writes_ms_and_per_digit_metrics(tmp_path: Path) -> None:
+def test_write_frame_ms_table_file_writes_ms_table(tmp_path: Path) -> None:
     output_path = tmp_path / "ocr_ms_per_frame_table.csv"
     write_frame_ms_table_file(
         [
@@ -184,9 +184,9 @@ def test_write_frame_ms_table_file_writes_ms_and_per_digit_metrics(tmp_path: Pat
     )
 
     content = output_path.read_text(encoding="utf-8")
-    assert "id,ocr_ms,digit_1_match,digit_2_match,digit_3_match,digit_4_match,digit_5_match,digit_6_match" in content
-    assert "0,100,0.812340,0.910000,0.920000,0.930000,0.940000,0.950000" in content
-    assert "1,None,0.000000,0.000000,,,," in content
+    assert "id,ocr_ms" in content
+    assert "0,100" in content
+    assert "1,None" in content
 
 
 def test_write_number_check_outputs_writes_crops_and_table(tmp_path: Path, monkeypatch) -> None:

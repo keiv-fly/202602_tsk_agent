@@ -12,7 +12,7 @@ The entrypoint `generate_screenshots.py`:
 - uses style values from `scriber/src/tooling/recorder.ts` to determine expected digit length
 - captures three screenshots per action (`before`, `at`, `after`)
 - writes analytics artifacts to `02_scriber_analytics`
-- writes a per-frame CSV table with OCR value, frame id, and per-digit matching metrics (`ocr_ms_per_frame_table.csv`)
+- writes a per-frame CSV table with OCR value and frame id (`ocr_ms_per_frame_table.csv`)
 - writes `check_number_ocr/` with one cropped screenshot per second based on video FPS (`id ~= second * fps`) and a screenshot table including the selected frame id and OCR value
 
 ## Prerequisites
